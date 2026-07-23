@@ -2,6 +2,10 @@ spring:
   data:
     mongodb:
       uri: ${SPRING_DATA_MONGODB_URI}
+      database: ${SPRING_DATA_MONGODB_DATABASE:DBHackhathon2026}
+      collections:    
+        transactions: Transactions
+        terminals: Terminals
   security:
     oauth2:
       resourceserver:
