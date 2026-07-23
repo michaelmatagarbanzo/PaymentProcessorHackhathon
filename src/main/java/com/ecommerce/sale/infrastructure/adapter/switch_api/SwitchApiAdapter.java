@@ -101,6 +101,13 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
             long duration = System.currentTimeMillis() - startedAt;
             LOG.error("event=switch.authorization.failed dependency=switch correlationId={} transactionId={} durationMs={} error={}",
                 transaction.correlationId(), transaction.transactionId(), duration, ex.getMessage());
+            LOG.error("event=sale.error correlationId={} transactionId={} errorType={} errorCode={} errorMessage={}",
+                safe(transaction.correlationId()),
+                safe(transaction.transactionId()),
+                ex.getClass().getSimpleName(),
+                "SWITCH_AUTHORIZATION_FAILED",
+                ex.getMessage(),
+                ex);
             applicationInsightsAdapter.increment("switch.authorization.total", Map.of("status", "ERROR"));
             applicationInsightsAdapter.timing("switch.authorization.latency", duration, Map.of("status", "ERROR"));
             applicationInsightsAdapter.event("switch.authorization.failed", Map.of(

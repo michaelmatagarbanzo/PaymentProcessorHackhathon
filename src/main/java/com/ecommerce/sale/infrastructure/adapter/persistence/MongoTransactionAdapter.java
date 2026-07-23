@@ -77,6 +77,13 @@ public class MongoTransactionAdapter implements TransactionRepositoryPort {
             long duration = System.currentTimeMillis() - startedAt;
             LOG.error("event=mongo.save.failed dependency={} correlationId={} transactionId={} durationMs={} error={}",
                 dependencyName, transaction.correlationId(), transaction.transactionId(), duration, ex.getMessage());
+            LOG.error("event=sale.error correlationId={} transactionId={} errorType={} errorCode={} errorMessage={}",
+                safe(transaction.correlationId()),
+                safe(transaction.transactionId()),
+                ex.getClass().getSimpleName(),
+                "DB_SAVE_FAILED",
+                ex.getMessage(),
+                ex);
             applicationInsightsAdapter.increment("mongo.transaction.save.total", Map.of("status", "ERROR"));
             applicationInsightsAdapter.timing("mongo.transaction.save.latency", duration,
                 Map.of("status", "ERROR"));
@@ -107,6 +114,13 @@ public class MongoTransactionAdapter implements TransactionRepositoryPort {
         } catch (RuntimeException ex) {
             LOG.error("event=mongo.findByTransactionId.failed dependency={} correlationId={} transactionId={} error={}",
                 dependencyName, "unknown", transactionId, ex.getMessage());
+            LOG.error("event=sale.error correlationId={} transactionId={} errorType={} errorCode={} errorMessage={}",
+                "unknown",
+                safe(transactionId),
+                ex.getClass().getSimpleName(),
+                "DB_FIND_BY_TRANSACTION_ID_FAILED",
+                ex.getMessage(),
+                ex);
             if (isExternalDependencyFailure(ex)) {
                 throw new ExternalDependencyUnavailableException(dependencyName, ex);
             }
@@ -149,6 +163,13 @@ public class MongoTransactionAdapter implements TransactionRepositoryPort {
         } catch (RuntimeException ex) {
             LOG.error("event=mongo.findDuplicate.failed dependency={} correlationId={} terminalId={} invoice={} error={}",
                 dependencyName, "unknown", terminalId, invoice, ex.getMessage());
+            LOG.error("event=sale.error correlationId={} transactionId={} errorType={} errorCode={} errorMessage={}",
+                "unknown",
+                "unknown",
+                ex.getClass().getSimpleName(),
+                "DB_DUPLICATE_LOOKUP_FAILED",
+                ex.getMessage(),
+                ex);
             if (isExternalDependencyFailure(ex)) {
                 throw new ExternalDependencyUnavailableException(dependencyName, ex);
             }
@@ -197,6 +218,13 @@ public class MongoTransactionAdapter implements TransactionRepositoryPort {
                 Map.of("status", "ERROR"));
             LOG.error("event=mongo.updateStatus.failed dependency={} correlationId={} transactionId={} durationMs={} error={}",
                 dependencyName, "unknown", transactionId, duration, ex.getMessage());
+            LOG.error("event=sale.error correlationId={} transactionId={} errorType={} errorCode={} errorMessage={}",
+                "unknown",
+                safe(transactionId),
+                ex.getClass().getSimpleName(),
+                "DB_UPDATE_STATUS_FAILED",
+                ex.getMessage(),
+                ex);
             if (ex instanceof TransactionPersistenceException) {
                 throw ex;
             }

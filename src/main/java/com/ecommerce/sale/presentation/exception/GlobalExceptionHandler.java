@@ -15,6 +15,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -29,6 +32,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
     private static final URI VALIDATION_ERROR_TYPE = URI.create("/errors/validation-error");
     private static final URI DUPLICATE_TRANSACTION_TYPE = URI.create("/errors/duplicate-transaction");
     private static final URI DATABASE_UNAVAILABLE_TYPE = URI.create("/errors/database-unavailable");
@@ -39,6 +44,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ProblemDetail handleValidation(MethodArgumentNotValidException ex, HttpServletRequest request) {
+        logSaleError(request, "ValidationException", String.valueOf(HttpStatus.BAD_REQUEST.value()),
+            "La solicitud no cumple las validaciones requeridas", ex);
         ProblemDetail problemDetail = baseProblem(
             HttpStatus.BAD_REQUEST,
             VALIDATION_ERROR_TYPE,
@@ -55,6 +62,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({InvalidSaleRequestException.class, IllegalArgumentException.class, IllegalStateException.class})
     ProblemDetail handleBadRequest(RuntimeException ex, HttpServletRequest request) {
+        logSaleError(request, "BusinessException", String.valueOf(HttpStatus.BAD_REQUEST.value()), ex.getMessage(), ex);
         return baseProblem(
             HttpStatus.BAD_REQUEST,
             VALIDATION_ERROR_TYPE,
@@ -66,6 +74,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DuplicateTransactionException.class)
     ProblemDetail handleDuplicateTransaction(DuplicateTransactionException ex, HttpServletRequest request) {
+        logSaleError(request, "BusinessException", String.valueOf(HttpStatus.CONFLICT.value()), ex.getMessage(), ex);
         return baseProblem(
             HttpStatus.CONFLICT,
             DUPLICATE_TRANSACTION_TYPE,
@@ -80,11 +89,15 @@ public class GlobalExceptionHandler {
         ExternalDependencyUnavailableException ex,
         HttpServletRequest request
     ) {
+        logSaleError(request, "ExternalDependencyUnavailableException", String.valueOf(HttpStatus.SERVICE_UNAVAILABLE.value()),
+            ex.getMessage(), ex);
         return externalDependencyUnavailableResponse(ex.getDependency(), request);
     }
 
     @ExceptionHandler({AuthorizationSwitchException.class, SwitchAuthenticationException.class, TransactionPersistenceException.class})
     ResponseEntity<ProblemDetail> handleServiceUnavailable(SaleDomainException ex, HttpServletRequest request) {
+        logSaleError(request, ex.getClass().getSimpleName(), String.valueOf(HttpStatus.SERVICE_UNAVAILABLE.value()),
+            ex.getMessage(), ex);
         if (isExternalDependencyFailure(ex)) {
             return externalDependencyUnavailableResponse(resolveDependency(ex), request);
         }
@@ -102,11 +115,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({CallNotPermittedException.class, TimeoutException.class})
     ResponseEntity<ProblemDetail> handleResilienceFailures(RuntimeException ex, HttpServletRequest request) {
+        logSaleError(request, ex.getClass().getSimpleName(), String.valueOf(HttpStatus.SERVICE_UNAVAILABLE.value()),
+            ex.getMessage(), ex);
         return externalDependencyUnavailableResponse("switch", request);
     }
 
     @ExceptionHandler(AuthenticationException.class)
     ProblemDetail handleUnauthorized(AuthenticationException ex, HttpServletRequest request) {
+        logSaleError(request, "AuthenticationException", String.valueOf(HttpStatus.UNAUTHORIZED.value()),
+            "La autenticación es requerida para acceder a este recurso", ex);
         return baseProblem(
             HttpStatus.UNAUTHORIZED,
             UNAUTHORIZED_TYPE,
@@ -118,6 +135,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AccessDeniedException.class)
     ProblemDetail handleAccessDenied(AccessDeniedException ex, HttpServletRequest request) {
+        logSaleError(request, "AccessDeniedException", String.valueOf(HttpStatus.FORBIDDEN.value()),
+            "No tiene permisos suficientes para acceder a este recurso", ex);
         return baseProblem(
             HttpStatus.FORBIDDEN,
             ACCESS_DENIED_TYPE,
@@ -129,6 +148,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ProblemDetail handleUnexpected(Exception ex, HttpServletRequest request) {
+        logSaleError(request, ex.getClass().getSimpleName(), String.valueOf(HttpStatus.INTERNAL_SERVER_ERROR.value()),
+            "Ocurrió un error inesperado", ex);
         return baseProblem(
             HttpStatus.INTERNAL_SERVER_ERROR,
             INTERNAL_SERVER_ERROR_TYPE,
@@ -227,5 +248,29 @@ public class GlobalExceptionHandler {
             };
         }
         return rejectedValue;
+    }
+
+    private void logSaleError(HttpServletRequest request, String errorType, String errorCode, String errorMessage, Throwable throwable) {
+        String correlationId = request.getHeader("X-Correlation-Id");
+        if (correlationId == null || correlationId.isBlank()) {
+            correlationId = MDC.get("correlationId");
+        }
+        String transactionId = request.getHeader("X-Transaction-Id");
+        if (transactionId == null || transactionId.isBlank()) {
+            transactionId = MDC.get("transactionId");
+        }
+        LOG.error(
+            "event=sale.error correlationId={} transactionId={} errorType={} errorCode={} errorMessage={}",
+            safe(correlationId),
+            safe(transactionId),
+            errorType,
+            errorCode,
+            errorMessage,
+            throwable
+        );
+    }
+
+    private String safe(String value) {
+        return value == null || value.isBlank() ? "unknown" : value;
     }
 }

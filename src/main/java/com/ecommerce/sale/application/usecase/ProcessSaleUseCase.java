@@ -119,6 +119,13 @@ public class ProcessSaleUseCase {
             long duration = System.currentTimeMillis() - startedAt;
             LOG.error("event=sale.process.failed correlationId={} transactionId={} durationMs={} error={}",
                 correlationId, failed.transactionId(), duration, ex.getMessage());
+            LOG.error("event=sale.error correlationId={} transactionId={} errorType={} errorCode={} errorMessage={}",
+                correlationId,
+                failed.transactionId(),
+                ex.getClass().getSimpleName(),
+                "SALE_PROCESS_FAILED",
+                ex.getMessage(),
+                ex);
             observabilityPort.event("sale.process.failed", Map.of(
                 "correlationId", correlationId,
                 "transactionId", failed.transactionId(),

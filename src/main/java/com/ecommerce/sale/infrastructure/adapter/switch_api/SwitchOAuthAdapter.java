@@ -78,6 +78,13 @@ public class SwitchOAuthAdapter implements SwitchAuthenticationPort {
         } catch (RuntimeException ex) {
             LOG.error("event=switch.oauth.failed dependency=switch correlationId={} error={}",
                 "unknown", ex.getMessage());
+            LOG.error("event=sale.error correlationId={} transactionId={} errorType={} errorCode={} errorMessage={}",
+                "unknown",
+                "unknown",
+                ex.getClass().getSimpleName(),
+                "SWITCH_OAUTH_FAILED",
+                ex.getMessage(),
+                ex);
             if (isExternalDependencyFailure(ex)) {
                 throw new ExternalDependencyUnavailableException("switch", ex);
             }

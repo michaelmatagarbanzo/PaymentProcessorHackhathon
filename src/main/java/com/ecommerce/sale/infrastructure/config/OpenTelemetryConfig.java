@@ -1,10 +1,11 @@
 package com.ecommerce.sale.infrastructure.config;
 
 import com.azure.monitor.opentelemetry.exporter.AzureMonitorExporter;
-import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.context.Scope;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdk;
 import io.opentelemetry.sdk.autoconfigure.AutoConfiguredOpenTelemetrySdkBuilder;
 import java.util.HashMap;
@@ -32,30 +33,39 @@ public class OpenTelemetryConfig {
     @Bean
     OpenTelemetry openTelemetry() {
         String connectionString = System.getenv("APPLICATIONINSIGHTS_CONNECTION_STRING");
-        if (connectionString == null || connectionString.isBlank()) {
-            LOG.warn("Application Insights exporter disabled: APPLICATIONINSIGHTS_CONNECTION_STRING is not set");
-            return GlobalOpenTelemetry.get();
-        }
-
         try {
             AutoConfiguredOpenTelemetrySdkBuilder builder = AutoConfiguredOpenTelemetrySdk.builder()
                 .setResultAsGlobal()
                 .addPropertiesSupplier(() -> {
                     Map<String, String> properties = new HashMap<>();
                     properties.put("otel.service.name", serviceName);
-                    properties.put("otel.logs.exporter", "azuremonitor");
                     properties.put("otel.traces.exporter", "none");
                     properties.put("otel.metrics.exporter", "none");
+                    properties.put("otel.logs.exporter", "none");
                     return properties;
                 });
 
-            AzureMonitorExporter.customize(builder, connectionString);
+            if (connectionString == null || connectionString.isBlank()) {
+                LOG.info("AI_EXPORTER_ENABLED=false");
+                LOG.warn("Application Insights exporter disabled: APPLICATIONINSIGHTS_CONNECTION_STRING is not set");
+            } else {
+                LOG.info("AI_EXPORTER_ENABLED=true");
+                LOG.info("AI_EXPORTER_CONNECTION_ACTIVE");
+                AzureMonitorExporter.customize(builder, connectionString);
+                LOG.info("AI_LOG_EXPORT_START");
+            }
+
             OpenTelemetry openTelemetry = builder.build().getOpenTelemetrySdk();
-            LOG.info("Application Insights exporter enabled");
+            if (connectionString == null || connectionString.isBlank()) {
+                LOG.info("OpenTelemetry SDK initialized without Azure exporter");
+            } else {
+                LOG.info("Application Insights exporter enabled");
+                LOG.info("AI_LOG_EXPORT_SUCCESS");
+            }
             return openTelemetry;
         } catch (RuntimeException ex) {
-            LOG.warn("Global OpenTelemetry already initialized externally; reusing existing global instance");
-            return GlobalOpenTelemetry.get();
+            LOG.error("AI_LOG_EXPORT_FAILURE", ex);
+            throw ex;
         }
     }
 
@@ -65,7 +75,7 @@ public class OpenTelemetryConfig {
     }
 
     @Bean
-    OncePerRequestFilter traceAttributeFilter() {
+    OncePerRequestFilter traceAttributeFilter(OpenTelemetry openTelemetry) {
         return new OncePerRequestFilter() {
             @Override
             protected void doFilterInternal(jakarta.servlet.http.HttpServletRequest request,
@@ -77,21 +87,26 @@ public class OpenTelemetryConfig {
                     correlationId = MDC.get("correlationId");
                 }
                 if (correlationId != null && !correlationId.isBlank()) {
-                    Span.current().setAttribute("correlation.id", correlationId);
                     MDC.put("correlationId", correlationId);
                 }
 
-                SpanContext spanContext = Span.current().getSpanContext();
-                if (spanContext.isValid()) {
+                Span requestSpan = openTelemetry.getTracer("sale-api")
+                    .spanBuilder(request.getMethod() + " " + request.getRequestURI())
+                    .setSpanKind(SpanKind.SERVER)
+                    .startSpan();
+                if (correlationId != null && !correlationId.isBlank()) {
+                    requestSpan.setAttribute("correlation.id", correlationId);
+                }
+
+                try (Scope scope = requestSpan.makeCurrent()) {
+                    SpanContext spanContext = requestSpan.getSpanContext();
                     MDC.put("traceId", spanContext.getTraceId());
                     MDC.put("spanId", spanContext.getSpanId());
                     response.setHeader("traceparent",
                         "00-" + spanContext.getTraceId() + "-" + spanContext.getSpanId() + "-01");
-                }
-
-                try {
                     filterChain.doFilter(request, response);
                 } finally {
+                    requestSpan.end();
                     MDC.remove("traceId");
                     MDC.remove("spanId");
                 }
