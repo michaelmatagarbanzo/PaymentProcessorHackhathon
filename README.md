@@ -179,6 +179,51 @@ Recomendación:
 - Conceder permisos mínimos sobre Key Vault: Secret get y Secret list
 - Usar User-Assigned Identity solo cuando se requiera aislamiento por identidad
 
+## Exportación de logs a Application Insights
+
+La aplicación mantiene logs JSON en consola y exporta los eventos de logger (INFO/WARN/ERROR) a Azure Application Insights vía OpenTelemetry cuando existe la variable de entorno `APPLICATIONINSIGHTS_CONNECTION_STRING`.
+
+Variables requeridas:
+
+- APPLICATIONINSIGHTS_CONNECTION_STRING
+- SPRING_PROFILES_ACTIVE (recomendado: local o azure)
+
+Ejemplo local:
+
+```bash
+export SPRING_PROFILES_ACTIVE=local
+export APPLICATIONINSIGHTS_CONNECTION_STRING="InstrumentationKey=...;IngestionEndpoint=https://..."
+mvn spring-boot:run
+```
+
+Logs de validación esperados en arranque:
+
+- Application Insights exporter enabled
+- Application Insights connectivity test
+
+Validación de llegada en Application Insights:
+
+1. Generar logs INFO, WARN y ERROR (por ejemplo, invocando `POST /api/v1/sales` y `GET /actuator/health` en escenarios de dependencia no disponible).
+2. Abrir Logs en Application Insights y ejecutar:
+
+```kusto
+AppTraces
+| order by TimeGenerated desc
+| take 50
+```
+
+3. Confirmar presencia de campos de contexto en customDimensions cuando estén disponibles:
+
+- correlationId
+- transactionId
+- traceId
+- spanId
+
+Compatibilidad Grafana:
+
+- Configurar Azure Monitor como Data Source en Grafana.
+- Consultar `AppTraces` para paneles de logs y correlacionar con trazas/métricas.
+
 ## Troubleshooting
 
 1. Error de Java o versión incorrecta

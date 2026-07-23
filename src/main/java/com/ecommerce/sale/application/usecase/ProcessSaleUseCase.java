@@ -69,6 +69,7 @@ public class ProcessSaleUseCase {
         duplicateDetectionService.execute(command);
 
         String transactionId = generateTransactionIdUseCase.execute();
+        MDC.put("transactionId", transactionId);
         Instant now = Instant.now();
 
         SaleTransaction pending = new SaleTransaction(
@@ -126,6 +127,8 @@ public class ProcessSaleUseCase {
             observabilityPort.increment("sale.process.total", Map.of("status", "ERROR"));
             observabilityPort.timing("sale.process.latency", duration, Map.of("status", "ERROR"));
             throw ex;
+        } finally {
+            MDC.remove("transactionId");
         }
     }
 

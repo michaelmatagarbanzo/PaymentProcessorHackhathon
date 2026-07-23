@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
+    <appender name="OTEL" class="io.opentelemetry.instrumentation.logback.appender.v1_0.OpenTelemetryAppender">
+        <captureMdcAttributes>correlationId,transactionId,traceId,spanId</captureMdcAttributes>
+    </appender>
+
     <appender name="JSON_CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
             <providers>
@@ -28,5 +32,6 @@
 
     <root level="INFO">
         <appender-ref ref="JSON_CONSOLE" />
+        <appender-ref ref="OTEL" />
     </root>
 </configuration>

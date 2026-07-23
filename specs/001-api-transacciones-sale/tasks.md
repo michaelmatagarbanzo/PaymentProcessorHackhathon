@@ -123,6 +123,7 @@ Responsabilidades:
 - [X] T065 [P] [US4] Performance tests (P95/P99/error rate)
 - [X] T066 [P] [US1] ArchUnit tests de reglas de capas y restricciones
 - [X] T071 [US1] Mejorar `GlobalExceptionHandler` para usar `type` RFC9457 explícito por categoría y actualizar pruebas unitarias afectadas
+- [X] T072 [US3] Implementar exportación de logs JSON hacia Azure Application Insights con OpenTelemetry y validar consulta `AppTraces`
 
 ---
 

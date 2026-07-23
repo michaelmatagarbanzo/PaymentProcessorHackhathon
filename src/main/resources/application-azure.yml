@@ -44,10 +44,6 @@ azure:
   keyvault:
     uri: ${AZURE_KEYVAULT_URI}
 
-# Optional when Azure Monitor/Application Insights exporter uses connection string.
-applicationinsights:
-  connection-string: ${APPLICATIONINSIGHTS_CONNECTION_STRING:}
-
 resilience4j:
   circuitbreaker:
     instances:
