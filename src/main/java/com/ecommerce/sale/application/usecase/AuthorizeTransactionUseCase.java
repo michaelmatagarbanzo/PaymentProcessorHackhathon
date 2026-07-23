@@ -1,6 +1,7 @@
 package com.ecommerce.sale.application.usecase;
 
 import com.ecommerce.sale.application.port.out.AuthorizationSwitchPort;
+import com.ecommerce.sale.application.port.in.ProcessSaleCommand;
 import com.ecommerce.sale.domain.exception.AuthorizationSwitchException;
 import com.ecommerce.sale.domain.model.AuthorizationResponse;
 import com.ecommerce.sale.domain.model.SaleTransaction;
@@ -11,7 +12,7 @@ import org.slf4j.LoggerFactory;
  * Caso de uso: delega la autorización de la transacción al API Switch.
  *
  * Responsabilidades:
- * 1. Invocar AuthorizationSwitchPort.authorize(transaction).
+ * 1. Invocar AuthorizationSwitchPort.authorize(transaction, command, accessToken).
  * 2. Devolver la AuthorizationResponse recibida.
  * 3. Traducir excepciones técnicas a AuthorizationSwitchException.
  *
@@ -31,12 +32,12 @@ public class AuthorizeTransactionUseCase {
         this.getSwitchAccessTokenUseCase = getSwitchAccessTokenUseCase;
     }
 
-    public SaleTransaction execute(SaleTransaction transaction) {
+    public SaleTransaction execute(SaleTransaction transaction, ProcessSaleCommand command) {
         try {
             String accessToken = getSwitchAccessTokenUseCase.execute();
             LOG.info("event=sale.authorize.beforeSwitch correlationId={} transactionId={}",
                 transaction.correlationId(), transaction.transactionId());
-            AuthorizationResponse authorizationResponse = authorizationSwitchPort.authorize(transaction, accessToken);
+            AuthorizationResponse authorizationResponse = authorizationSwitchPort.authorize(transaction, command, accessToken);
             return transaction.withAuthorizationResult(authorizationResponse, java.time.Instant.now());
         } catch (AuthorizationSwitchException ex) {
             throw ex;

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
+import com.ecommerce.sale.application.port.in.ProcessSaleCommand;
 import com.ecommerce.sale.application.port.out.AuthorizationSwitchPort;
 import com.ecommerce.sale.domain.exception.AuthorizationSwitchException;
 import com.ecommerce.sale.domain.model.AuthorizationResponse;
@@ -38,6 +39,7 @@ class AuthorizeTransactionUseCaseTest {
     @Test
     void shouldAuthorizeTransactionAndReturnUpdatedStatus() {
         SaleTransaction pending = pendingTransaction();
+        ProcessSaleCommand command = sampleCommand();
         AuthorizationResponse response = new AuthorizationResponse(
             AuthorizationSource.AS400,
             "AUTH001",
@@ -49,9 +51,9 @@ class AuthorizeTransactionUseCaseTest {
         );
 
         when(getSwitchAccessTokenUseCase.execute()).thenReturn("token-123");
-        when(authorizationSwitchPort.authorize(pending, "token-123")).thenReturn(response);
+    when(authorizationSwitchPort.authorize(pending, command, "token-123")).thenReturn(response);
 
-        SaleTransaction result = useCase.execute(pending);
+    SaleTransaction result = useCase.execute(pending, command);
 
         assertEquals(TransactionStatus.AUTHORIZED, result.status());
         assertEquals("AUTH001", result.authorizationResult().authorizationNumber());
@@ -60,25 +62,27 @@ class AuthorizeTransactionUseCaseTest {
     @Test
     void shouldPropagateDomainAuthorizationException() {
         SaleTransaction pending = pendingTransaction();
+        ProcessSaleCommand command = sampleCommand();
 
         when(getSwitchAccessTokenUseCase.execute()).thenReturn("token-123");
-        when(authorizationSwitchPort.authorize(any(), any()))
+        when(authorizationSwitchPort.authorize(any(), any(), any()))
             .thenThrow(new AuthorizationSwitchException("switch unavailable"));
 
-        assertThrows(AuthorizationSwitchException.class, () -> useCase.execute(pending));
+        assertThrows(AuthorizationSwitchException.class, () -> useCase.execute(pending, command));
     }
 
     @Test
     void shouldWrapUnexpectedExceptionAsAuthorizationSwitchException() {
         SaleTransaction pending = pendingTransaction();
+        ProcessSaleCommand command = sampleCommand();
 
         when(getSwitchAccessTokenUseCase.execute()).thenReturn("token-123");
-        when(authorizationSwitchPort.authorize(any(), any()))
+        when(authorizationSwitchPort.authorize(any(), any(), any()))
             .thenThrow(new IllegalStateException("boom"));
 
         AuthorizationSwitchException ex = assertThrows(
             AuthorizationSwitchException.class,
-            () -> useCase.execute(pending)
+            () -> useCase.execute(pending, command)
         );
 
         assertEquals("Error al invocar el API Switch para la transacción: " + pending.transactionId(), ex.getMessage());
@@ -102,6 +106,24 @@ class AuthorizeTransactionUseCaseTest {
             now,
             null,
             now
+        );
+    }
+
+    private ProcessSaleCommand sampleCommand() {
+        return new ProcessSaleCommand(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "TERM-0001",
+            "SALE",
+            5633L,
+            "55189800****2751",
+            "2805",
+            14611279L,
+            "123",
+            "1",
+            true,
+            null,
+            null,
+            null
         );
     }
 }

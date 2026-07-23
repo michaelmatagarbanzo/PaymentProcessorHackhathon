@@ -3,6 +3,7 @@ package com.ecommerce.sale.infrastructure;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.ecommerce.sale.application.port.in.ProcessSaleCommand;
 import com.ecommerce.sale.domain.model.SaleTransaction;
 import com.ecommerce.sale.domain.model.TransactionStatus;
 import com.ecommerce.sale.domain.model.TransactionType;
@@ -26,7 +27,8 @@ class SwitchApiAdapterTest {
     @Test
     void shouldMapSwitchTransportFailureToExternalDependencyException() {
         SwitchProperties properties = new SwitchProperties();
-        properties.setBaseUrl("http://127.0.0.1:1");
+        properties.getAppconnector().setBaseUrl("http://127.0.0.1:1");
+        properties.getAppconnector().setApiKey("test-api-key");
 
         SwitchApiAdapter adapter = new SwitchApiAdapter(
             properties,
@@ -36,10 +38,28 @@ class SwitchApiAdapterTest {
 
         ExternalDependencyUnavailableException ex = assertThrows(
             ExternalDependencyUnavailableException.class,
-            () -> adapter.authorize(pendingTransaction(), "token-123")
+            () -> adapter.authorize(pendingTransaction(), sampleCommand(), "token-123")
         );
 
         assertEquals("switch", ex.getDependency());
+    }
+
+    private ProcessSaleCommand sampleCommand() {
+        return new ProcessSaleCommand(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "TERM-0001",
+            "SALE",
+            5633L,
+            "55189800****2751",
+            "2805",
+            14611279L,
+            "123",
+            "1",
+            true,
+            null,
+            null,
+            null
+        );
     }
 
     private SaleTransaction pendingTransaction() {

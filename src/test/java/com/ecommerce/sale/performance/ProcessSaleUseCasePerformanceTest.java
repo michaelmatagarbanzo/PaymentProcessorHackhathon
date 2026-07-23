@@ -39,7 +39,7 @@ class ProcessSaleUseCasePerformanceTest {
         doNothing().when(duplicateDetectionService).execute(any());
         doNothing().when(persistTransactionUseCase).execute(any());
         when(generateTransactionIdUseCase.execute()).thenAnswer(inv -> UUID.randomUUID().toString());
-        when(authorizeTransactionUseCase.execute(any())).thenAnswer(invocation -> {
+        when(authorizeTransactionUseCase.execute(any(), any())).thenAnswer(invocation -> {
             SaleTransaction pending = invocation.getArgument(0);
             AuthorizationResponse response = new AuthorizationResponse(
                 AuthorizationSource.AS400,

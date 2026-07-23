@@ -1,5 +1,6 @@
 package com.ecommerce.sale.infrastructure.adapter.switch_api;
 
+import com.ecommerce.sale.application.port.in.ProcessSaleCommand;
 import com.ecommerce.sale.application.port.out.AuthorizationSwitchPort;
 import com.ecommerce.sale.domain.exception.AuthorizationSwitchException;
 import com.ecommerce.sale.domain.model.AuthorizationResponse;
@@ -9,6 +10,8 @@ import com.ecommerce.sale.infrastructure.exception.ExternalDependencyUnavailable
 import com.ecommerce.sale.infrastructure.adapter.switch_api.dto.SwitchAuthorizationRequest;
 import com.ecommerce.sale.infrastructure.adapter.switch_api.dto.SwitchAuthorizationResponse;
 import com.ecommerce.sale.infrastructure.config.SwitchProperties;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.resilience4j.bulkhead.annotation.Bulkhead;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
@@ -31,21 +34,33 @@ import org.springframework.web.client.RestClient;
 public class SwitchApiAdapter implements AuthorizationSwitchPort {
 
     private static final Logger LOG = LoggerFactory.getLogger(SwitchApiAdapter.class);
-    private static final String AUTHORIZATION_PATH = "/api/switch/authorize";
+    private static final String AUTHORIZATION_PATH = "/api/v1/payments";
     private static final String CORRELATION_HEADER = "X-Correlation-Id";
+    private static final String API_KEY_HEADER = "X-API-Key";
+    private static final String EXPECTED_PROVIDER = "appconnector";
 
     private final RestClient restClient;
+    private final String endpoint;
+    private final String apiKey;
     private final SwitchRequestMapper switchRequestMapper;
     private final ApplicationInsightsAdapter applicationInsightsAdapter;
+    private final ObjectMapper objectMapper;
 
     public SwitchApiAdapter(SwitchProperties switchProperties,
                             SwitchRequestMapper switchRequestMapper,
                             ApplicationInsightsAdapter applicationInsightsAdapter) {
+        String baseUrl = switchProperties.resolveAppconnectorBaseUrl();
+        if (baseUrl == null || baseUrl.isBlank()) {
+            throw new IllegalStateException("switch.appconnector.base-url no está configurado");
+        }
         this.restClient = RestClient.builder()
-            .baseUrl(switchProperties.getBaseUrl())
+            .baseUrl(baseUrl)
             .build();
+        this.endpoint = baseUrl + AUTHORIZATION_PATH;
+        this.apiKey = switchProperties.resolveAppconnectorApiKey();
         this.switchRequestMapper = switchRequestMapper;
         this.applicationInsightsAdapter = applicationInsightsAdapter;
+        this.objectMapper = new ObjectMapper();
     }
 
     @Override
@@ -54,20 +69,30 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
     @Bulkhead(name = "switchApi")
     @TimeLimiter(name = "switchApi")
     @RateLimiter(name = "switchApi")
-    public AuthorizationResponse authorize(SaleTransaction transaction, String accessToken) {
+    public AuthorizationResponse authorize(SaleTransaction transaction, ProcessSaleCommand command, String accessToken) {
         long startedAt = System.currentTimeMillis();
         try {
-            SwitchAuthorizationRequest payload = switchRequestMapper.toRequest(transaction);
-            LOG.info("event=switch.authorization.started correlationId={} transactionId={}",
-                transaction.correlationId(), transaction.transactionId());
-            applicationInsightsAdapter.event("switch.authorization.started", Map.of(
+            validateApiKey();
+            SwitchAuthorizationRequest payload = switchRequestMapper.toRequest(transaction, command);
+            LOG.info(
+                "event=switch.request correlationId={} terminalId={} endpoint={} expectedProvider={} requestPayload={}",
+                transaction.correlationId(),
+                transaction.terminalId(),
+                endpoint,
+                EXPECTED_PROVIDER,
+                toJson(sanitizeRequestPayload(payload))
+            );
+            applicationInsightsAdapter.event("switch.request", Map.of(
                 "correlationId", safe(transaction.correlationId()),
-                "transactionId", safe(transaction.transactionId())
+                "transactionId", safe(transaction.transactionId()),
+                "endpoint", endpoint,
+                "provider", EXPECTED_PROVIDER
             ));
 
             RestClient.RequestBodySpec requestSpec = restClient.post()
                 .uri(AUTHORIZATION_PATH)
                 .contentType(MediaType.APPLICATION_JSON)
+                .header(API_KEY_HEADER, apiKey)
                 .header("Authorization", "Bearer " + accessToken);
 
             if (transaction.correlationId() != null && !transaction.correlationId().isBlank()) {
@@ -85,15 +110,24 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
 
             long duration = System.currentTimeMillis() - startedAt;
             applicationInsightsAdapter.increment("switch.authorization.total",
-                Map.of("status", response.responseCode() == null ? "UNKNOWN" : response.responseCode()));
+                Map.of("status", response.providerResponseCode() == null ? "UNKNOWN" : response.providerResponseCode()));
             applicationInsightsAdapter.timing("switch.authorization.latency", duration,
-                Map.of("status", response.responseCode() == null ? "UNKNOWN" : response.responseCode()));
-            LOG.info("event=switch.authorization.completed correlationId={} transactionId={} responseCode={} durationMs={}",
-                transaction.correlationId(), transaction.transactionId(), response.responseCode(), duration);
-            applicationInsightsAdapter.event("switch.authorization.completed", Map.of(
+                Map.of("status", response.providerResponseCode() == null ? "UNKNOWN" : response.providerResponseCode()));
+            LOG.info(
+                "event=switch.response correlationId={} transactionId={} provider={} status={} responseCode={} responsePayload={}",
+                transaction.correlationId(),
+                transaction.transactionId(),
+                safe(response.provider()),
+                safe(response.status()),
+                safe(response.providerResponseCode()),
+                toJson(response)
+            );
+            applicationInsightsAdapter.event("switch.response", Map.of(
                 "correlationId", safe(transaction.correlationId()),
                 "transactionId", safe(transaction.transactionId()),
-                "responseCode", response.responseCode() == null ? "UNKNOWN" : response.responseCode()
+                "provider", safe(response.provider()),
+                "status", safe(response.status()),
+                "responseCode", response.providerResponseCode() == null ? "UNKNOWN" : response.providerResponseCode()
             ));
 
             return switchRequestMapper.toDomainResponse(response);
@@ -130,6 +164,64 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
 
     private String safe(String value) {
         return value == null ? "unknown" : value;
+    }
+
+    private void validateApiKey() {
+        if (apiKey == null || apiKey.isBlank()) {
+            throw new AuthorizationSwitchException("switch.appconnector.api-key no está configurado");
+        }
+    }
+
+    private SwitchAuthorizationRequest sanitizeRequestPayload(SwitchAuthorizationRequest payload) {
+        if (payload == null || payload.paymentInformation() == null || payload.paymentInformation().card() == null) {
+            return payload;
+        }
+
+        SwitchAuthorizationRequest.Card safeCard = new SwitchAuthorizationRequest.Card(
+            maskAccountNumber(payload.paymentInformation().card().accountNumber()),
+            payload.paymentInformation().card().expirationDate()
+        );
+
+        SwitchAuthorizationRequest.PaymentInformation safePayment = new SwitchAuthorizationRequest.PaymentInformation(
+            safeCard,
+            payload.paymentInformation().securityValidationResponse(),
+            payload.paymentInformation().binValidate()
+        );
+
+        return new SwitchAuthorizationRequest(
+            payload.clientReferenceInformation(),
+            payload.transactionInformation(),
+            safePayment,
+            payload.orderInformation(),
+            payload.authenticationInformation(),
+            payload.tokenizationInformation(),
+            payload.processingInformation()
+        );
+    }
+
+    private String maskAccountNumber(String accountNumber) {
+        if (accountNumber == null || accountNumber.isBlank()) {
+            return "[REDACTED]";
+        }
+
+        String digitsOnly = accountNumber.replaceAll("\\D", "");
+        if (digitsOnly.length() < 10) {
+            return "[REDACTED]";
+        }
+
+        int prefixLength = Math.min(6, digitsOnly.length() - 4);
+        int maskedLength = digitsOnly.length() - prefixLength - 4;
+        return digitsOnly.substring(0, prefixLength)
+            + "*".repeat(Math.max(maskedLength, 0))
+            + digitsOnly.substring(digitsOnly.length() - 4);
+    }
+
+    private String toJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException ex) {
+            return "{\"serializationError\":\"" + ex.getClass().getSimpleName() + "\"}";
+        }
     }
 
     private boolean isExternalDependencyFailure(Throwable throwable) {

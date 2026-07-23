@@ -6,7 +6,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class SwitchProperties {
 
     private String baseUrl;
+    private String apiKey;
     private int timeoutMs;
+    private final Appconnector appconnector = new Appconnector();
     private final OAuth oauth = new OAuth();
 
     public String getBaseUrl() {
@@ -15,6 +17,14 @@ public class SwitchProperties {
 
     public void setBaseUrl(String baseUrl) {
         this.baseUrl = baseUrl;
+    }
+
+    public String getApiKey() {
+        return apiKey;
+    }
+
+    public void setApiKey(String apiKey) {
+        this.apiKey = apiKey;
     }
 
     public int getTimeoutMs() {
@@ -27,6 +37,46 @@ public class SwitchProperties {
 
     public OAuth getOauth() {
         return oauth;
+    }
+
+    public Appconnector getAppconnector() {
+        return appconnector;
+    }
+
+    public String resolveAppconnectorBaseUrl() {
+        if (appconnector.baseUrl != null && !appconnector.baseUrl.isBlank()) {
+            return appconnector.baseUrl;
+        }
+        return baseUrl;
+    }
+
+    public String resolveAppconnectorApiKey() {
+        if (appconnector.apiKey != null && !appconnector.apiKey.isBlank()) {
+            return appconnector.apiKey;
+        }
+        return apiKey;
+    }
+
+    public static class Appconnector {
+
+        private String baseUrl;
+        private String apiKey;
+
+        public String getBaseUrl() {
+            return baseUrl;
+        }
+
+        public void setBaseUrl(String baseUrl) {
+            this.baseUrl = baseUrl;
+        }
+
+        public String getApiKey() {
+            return apiKey;
+        }
+
+        public void setApiKey(String apiKey) {
+            this.apiKey = apiKey;
+        }
     }
 
     public static class OAuth {

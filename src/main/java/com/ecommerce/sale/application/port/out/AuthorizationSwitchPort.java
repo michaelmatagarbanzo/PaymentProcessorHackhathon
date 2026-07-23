@@ -1,5 +1,6 @@
 package com.ecommerce.sale.application.port.out;
 
+import com.ecommerce.sale.application.port.in.ProcessSaleCommand;
 import com.ecommerce.sale.domain.model.AuthorizationResponse;
 import com.ecommerce.sale.domain.model.SaleTransaction;
 
@@ -9,5 +10,5 @@ import com.ecommerce.sale.domain.model.SaleTransaction;
  */
 public interface AuthorizationSwitchPort {
 
-    AuthorizationResponse authorize(SaleTransaction transaction, String accessToken);
+    AuthorizationResponse authorize(SaleTransaction transaction, ProcessSaleCommand command, String accessToken);
 }

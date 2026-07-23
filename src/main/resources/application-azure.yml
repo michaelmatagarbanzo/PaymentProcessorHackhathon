@@ -36,7 +36,9 @@ security:
   tenant-id: ${SECURITY_TENANT_ID}
 
 switch:
-  base-url: ${SWITCH_API_BASE_URL}
+  appconnector:
+    base-url: ${SWITCH_BASE_URL}
+    api-key: ${SWITCH_API_KEY}
   timeout-ms: ${SWITCH_TIMEOUT_MS:5000}
   oauth:
     token-endpoint: ${SWITCH_OAUTH_TOKEN_ENDPOINT}

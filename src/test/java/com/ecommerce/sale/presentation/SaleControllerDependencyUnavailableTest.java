@@ -97,7 +97,7 @@ class SaleControllerDependencyUnavailableTest {
 
         performRequestAndAssertServiceUnavailable(
             "/errors/switch-unavailable",
-            "No fue posible comunicarse con el switch de autorización"
+            "El servicio AppConnector no está disponible temporalmente"
         );
     }
 
@@ -109,7 +109,7 @@ class SaleControllerDependencyUnavailableTest {
 
         performRequestAndAssertServiceUnavailable(
             "/errors/switch-unavailable",
-            "No fue posible comunicarse con el switch de autorización"
+            "El servicio AppConnector no está disponible temporalmente"
         );
     }
 

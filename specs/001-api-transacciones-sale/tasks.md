@@ -124,6 +124,7 @@ Responsabilidades:
 - [X] T066 [P] [US1] ArchUnit tests de reglas de capas y restricciones
 - [X] T071 [US1] Mejorar `GlobalExceptionHandler` para usar `type` RFC9457 explícito por categoría y actualizar pruebas unitarias afectadas
 - [X] T072 [US3] Implementar exportación de logs JSON hacia Azure Application Insights con OpenTelemetry y validar consulta `AppTraces`
+- [X] T073 [US1] Externalizar configuración de AppConnector (`SWITCH_BASE_URL`, `SWITCH_API_KEY`) y alinear contrato `POST /api/v1/payments` con logging PCI
 
 ---
 

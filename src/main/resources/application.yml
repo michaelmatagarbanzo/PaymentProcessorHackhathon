@@ -41,10 +41,12 @@ security:
   tenant-id: ${SECURITY_TENANT_ID:common}
 
 switch:
-  base-url: ${SWITCH_API_BASE_URL:https://switch.internal}
+  appconnector:
+    base-url: ${SWITCH_BASE_URL:${SWITCH_API_BASE_URL:}}
+    api-key: ${SWITCH_API_KEY:}
   timeout-ms: ${SWITCH_TIMEOUT_MS:5000}
   oauth:
-    token-endpoint: ${SWITCH_OAUTH_TOKEN_ENDPOINT:https://switch.internal/oauth/token}
+    token-endpoint: ${SWITCH_OAUTH_TOKEN_ENDPOINT:}
     client-id: ${SWITCH_OAUTH_CLIENT_ID:}
     client-secret: ${SWITCH_OAUTH_CLIENT_SECRET:}
     scope: ${SWITCH_OAUTH_SCOPE:switch.authorize}

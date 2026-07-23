@@ -14,6 +14,7 @@ import com.ecommerce.sale.domain.model.AuthorizationSource;
 import com.ecommerce.sale.domain.model.SaleTransaction;
 import com.ecommerce.sale.domain.model.TransactionStatus;
 import com.ecommerce.sale.domain.model.TransactionType;
+import com.ecommerce.sale.application.port.in.ProcessSaleCommand;
 import com.ecommerce.sale.infrastructure.adapter.observability.ApplicationInsightsAdapter;
 import com.ecommerce.sale.infrastructure.adapter.switch_api.SwitchApiAdapter;
 import com.ecommerce.sale.infrastructure.adapter.switch_api.SwitchRequestMapper;
@@ -39,7 +40,8 @@ class SwitchApiAdapterContractTest {
         wireMockServer.start();
 
         SwitchProperties properties = new SwitchProperties();
-        properties.setBaseUrl("http://localhost:" + wireMockServer.port());
+        properties.getAppconnector().setBaseUrl("http://localhost:" + wireMockServer.port());
+        properties.getAppconnector().setApiKey("test-api-key");
 
         var registry = new SimpleMeterRegistry();
         var metrics = new GrafanaMetricsConfig(registry);
@@ -56,36 +58,54 @@ class SwitchApiAdapterContractTest {
     @Test
     @Disabled("Known local issue: JDK HttpClient + WireMock may close HTTP/2 stream with EOF")
     void shouldMapApprovedResponseFromSwitch() {
-        wireMockServer.stubFor(post(urlEqualTo("/api/switch/authorize"))
+        wireMockServer.stubFor(post(urlEqualTo("/api/v1/payments"))
                         .willReturn(okJson("""
                                 {
-                                    "authorizationSource": "AS400",
-                                    "authorizationNumber": "AUTH001",
-                                    "responseCode": "00",
-                                    "responseDescription": "Aprobado",
+                        "provider": "AS400",
+                        "authorizationCode": "AUTH001",
+                        "providerResponseCode": "00",
+                        "providerMessage": "Aprobado",
                                     "referenceNumber": "REF001",
-                                    "hostDate": "0722",
-                                    "hostTime": "143052"
+                        "status": "AUTHORIZED"
                                 }
                                 """)));
 
-        AuthorizationResponse response = switchApiAdapter.authorize(pendingTransaction(), "token-123");
+        AuthorizationResponse response = switchApiAdapter.authorize(pendingTransaction(), sampleCommand(), "token-123");
 
         assertEquals(AuthorizationSource.AS400, response.authorizationSource());
         assertEquals("00", response.responseCode());
-                wireMockServer.verify(postRequestedFor(urlEqualTo("/api/switch/authorize"))
+            wireMockServer.verify(postRequestedFor(urlEqualTo("/api/v1/payments"))
+                .withHeader("X-API-Key", equalTo("test-api-key"))
                         .withHeader("Authorization", equalTo("Bearer token-123"))
                         .withHeader("X-Correlation-Id", equalTo("550e8400-e29b-41d4-a716-446655440000")));
     }
 
     @Test
     void shouldTranslateTechnicalFailureToExternalDependencyException() {
-        wireMockServer.stubFor(post(urlEqualTo("/api/switch/authorize"))
+        wireMockServer.stubFor(post(urlEqualTo("/api/v1/payments"))
             .willReturn(aResponse().withStatus(500).withBody("upstream error")));
 
         assertThrows(
             ExternalDependencyUnavailableException.class,
-            () -> switchApiAdapter.authorize(pendingTransaction(), "token-123")
+            () -> switchApiAdapter.authorize(pendingTransaction(), sampleCommand(), "token-123")
+        );
+    }
+
+    private ProcessSaleCommand sampleCommand() {
+        return new ProcessSaleCommand(
+            "550e8400-e29b-41d4-a716-446655440000",
+            "TERM-0001",
+            "SALE",
+            5633L,
+            "55189800****2751",
+            "2805",
+            14611279L,
+            "123",
+            "1",
+            true,
+            null,
+            null,
+            null
         );
     }
 

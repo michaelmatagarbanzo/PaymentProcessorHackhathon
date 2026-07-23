@@ -203,7 +203,7 @@ public class GlobalExceptionHandler {
         }
         return switch (dependency.toLowerCase()) {
             case "mongodb", "cosmos" -> "No fue posible acceder a la base de datos";
-            case "switch" -> "No fue posible comunicarse con el switch de autorización";
+            case "switch" -> "El servicio AppConnector no está disponible temporalmente";
             default -> "El servicio requerido no está disponible temporalmente";
         };
     }

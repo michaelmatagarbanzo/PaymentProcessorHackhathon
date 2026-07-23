@@ -46,7 +46,8 @@ docker compose -f docker/docker-compose.local.yml up -d
 ```bash
 export SPRING_PROFILES_ACTIVE=local
 export SPRING_DATA_MONGODB_URI=mongodb://localhost:27017/sale_db
-export SWITCH_API_BASE_URL=http://localhost:8089
+export SWITCH_BASE_URL=http://localhost:7071
+export SWITCH_API_KEY=local-functions-key
 export SWITCH_OAUTH_TOKEN_ENDPOINT=http://localhost:8089/oauth/token
 export SWITCH_OAUTH_CLIENT_ID=local-client
 export SWITCH_OAUTH_CLIENT_SECRET=local-secret
@@ -119,7 +120,8 @@ Puerto expuesto local:
 
 Variables típicas:
 
-- SWITCH_API_BASE_URL=http://localhost:8089
+- SWITCH_BASE_URL=http://localhost:7071
+- SWITCH_API_KEY=local-functions-key
 - SWITCH_OAUTH_TOKEN_ENDPOINT=http://localhost:8089/oauth/token
 
 ## Swagger
@@ -243,7 +245,7 @@ Compatibilidad Grafana:
 - Revisar issuer y audience configurados
 
 5. Error en integración con Switch
-- Verificar SWITCH_API_BASE_URL y token endpoint
+- Verificar SWITCH_BASE_URL, SWITCH_API_KEY y token endpoint
 - Revisar logs de WireMock en puerto 8089
 
 6. Swagger no responde

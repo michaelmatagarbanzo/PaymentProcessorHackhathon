@@ -97,7 +97,7 @@ public class ProcessSaleUseCase {
         try {
             LOG.info("event=sale.process.beforeSwitch correlationId={} transactionId={}",
                 correlationId, pending.transactionId());
-            SaleTransaction authorized = authorizeTransactionUseCase.execute(pending);
+            SaleTransaction authorized = authorizeTransactionUseCase.execute(pending, command);
             LOG.info("event=sale.process.beforePersistFinal correlationId={} transactionId={} status={}",
                 correlationId, authorized.transactionId(), authorized.status());
             persistTransactionUseCase.execute(authorized);
