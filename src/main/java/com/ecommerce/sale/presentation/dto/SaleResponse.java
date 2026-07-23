@@ -1,0 +1,25 @@
+package com.ecommerce.sale.presentation.dto;
+
+import java.time.Instant;
+
+public record SaleResponse(
+    String transactionId,
+    String correlationId,
+    String status,
+    String terminalId,
+    Long totalAmount,
+    AuthorizationResultDto authorization,
+    Instant processingDateTime,
+    Instant createdAt
+) {
+
+    public record AuthorizationResultDto(
+        String authorizationSource,
+        String authorizationNumber,
+        String responseCode,
+        String responseDescription,
+        String referenceNumber,
+        String hostDate,
+        String hostTime
+    ) {}
+}

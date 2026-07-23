@@ -1,125 +1,95 @@
-# Especificación de Feature: API Financiera de Transacciones SALE
+# Especificacion de Feature: API Financiera de Transacciones SALE
 
 **Rama de Feature**: `001-api-transacciones-sale`  
 **Creada**: 2026-07-22  
 **Estado**: Borrador  
-**Entrada**: Especificación detallada de API eCommerce para procesamiento de transacciones SALE
+**Entrada**: Especificacion detallada de API eCommerce para procesamiento de transacciones SALE
 
 ---
 
 ## Escenarios de Usuario y Pruebas *(obligatorio)*
 
-### Historia de Usuario 1 — Procesamiento de Autorización SALE (Prioridad: P1)
+### Historia de Usuario 1 - Procesamiento de Autorizacion SALE (Prioridad: P1)
 
-Un comercio afiliado requiere enviar una solicitud de pago (SALE) para que sea autorizada por un proveedor financiero externo. El sistema deberá validar la solicitud, enviarla a un servicio transaccional especializado, recibir la autorización y retornar el resultado al comercio en tiempo real.
+Un comercio afiliado envia una solicitud SALE y recibe una respuesta estandarizada de autorizacion financiera.
 
-**Por qué esta prioridad**: Es la funcionalidad central del sistema. Sin ella, no hay valor comercial posible. Todo comercio requiere poder procesar transacciones de venta.
+**Por que esta prioridad**: Es el flujo principal del MVP y entrega valor inmediato al comercio.
 
-**Prueba Independiente**: Puede completarse probando únicamente:
-1. Un comercio autenticado envía una solicitud SALE válida con monto, moneda, información de pago tokenizado.
-2. Entonces genera un transactionId único en formato UUID v4 de 36 caracteres antes de iniciar el procesamiento de la transacción.
-2. El sistema valida la solicitud, la envía al servicio transaccional.
-3. El comercio recibe una respuesta HTTP 200 con el resultado de autorización (aprobado/rechazado).
-4. La transacción queda registrada en MongoDB con transactionId único.
+**Prueba Independiente**:
+1. El comercio envia `POST /api/v1/sales` con JWT valido y payload valido.
+2. La API valida la solicitud, genera `transactionId` (UUID v4) y delega al API Switch.
+3. La API persiste la transaccion y retorna HTTP 200 con `AUTHORIZED` o `DECLINED`.
 
-**Escenarios de Aceptación**:
+**Escenarios de Aceptacion**:
 
-1. **Dado** un comercio autenticado con credenciales válidas de Entra ID, **Cuando** envía una solicitud SALE con transactionId único (UUID v4), monto $100 USD, información de pago tokenizado y correlationId, **Entonces** el sistema retorna HTTP 200 con authorizationNumber, responseCode, authorizationSource y status AUTHORIZED o DECLINED en menos de 3 segundos (P95).
-
-2. **Dado** un servicio transaccional disponible, **Cuando** el sistema recibe una respuesta de autorización, **Entonces** registra la respuesta completa en MongoDB incluyendo authorizationSource (AS400 o CYBERSOURCE), authorizationNumber, responseCode, hostDate, hostTime.
-
-3. **Dado** un servicio transaccional unavailable (timeout), **Cuando** se envía una solicitud SALE, **Entonces** el sistema retorna HTTP 503 con motivo de error descriptivo (CircuitBreaker abierto, timeout, etc.) tras agotar reintentos configurados (máx 3).
+1. **Dado** un comercio autenticado, **Cuando** envia una solicitud SALE valida, **Entonces** la API retorna HTTP 200 con `transactionId`, `authorizationSource`, `responseCode` y `status`.
+2. **Dado** un API Switch disponible, **Cuando** retorna autorizacion, **Entonces** la API persiste la respuesta completa en MongoDB.
+3. **Dado** un fallo temporal del API Switch, **Cuando** se procesa la solicitud, **Entonces** la API aplica resiliencia y retorna HTTP 503 en degradacion controlada.
 
 ---
 
-### Historia de Usuario 2 — Validación Integral de Solicitudes (Prioridad: P2)
+### Historia de Usuario 2 - Validacion Integral y Deteccion de Duplicados (Prioridad: P2)
 
-El sistema debe garantizar que toda solicitud SALE sea validada antes de iniciar su procesamiento, verificando la presencia de campos obligatorios, la integridad de la información y el cumplimiento de las reglas de negocio aplicables.
+La API valida todos los campos de entrada y evita reprocesar operaciones duplicadas mediante reglas de negocio.
 
-**Por qué esta prioridad**: La validación temprana previene errores operativos, evita el procesamiento de información inválida y reduce el riesgo de fallos durante la autorización financiera.
+**Por que esta prioridad**: Evita reprocesos, errores operativos y resultados inconsistentes.
 
-**Prueba Independiente**: Puede completarse sin que P1 esté completamente implementado:
+**Prueba Independiente**:
+1. La API rechaza solicitudes invalidas con HTTP 400.
+2. Para la misma combinacion de negocio (`terminalId`, `invoice`, `totalAmount`, `accountNumber`, `transactionType`) la API retorna el resultado ya existente sin invocar nuevamente el API Switch.
 
-1. Un comercio envía una solicitud SALE válida.
-2. El sistema valida todos los campos obligatorios y reglas de negocio.
-3. El sistema genera un transactionId único en formato UUID v4 de 36 caracteres.
-4. La solicitud válida continúa con el flujo de procesamiento.
-5. Las solicitudes inválidas son rechazadas antes de invocar el servicio transaccional.
-6. Se registra el resultado de la validación para fines de auditoría y trazabilidad.
+**Escenarios de Aceptacion**:
 
-**Escenarios de Aceptación**:
-
-1. **Dado** una solicitud SALE sin `terminalId`, **Cuando** se recibe la solicitud, **Entonces** el sistema retorna HTTP 400 indicando que el campo es obligatorio.
-
-2. **Dado** una solicitud SALE con `totalAmount` igual o menor a cero, **Cuando** se ejecuta la validación, **Entonces** el sistema retorna HTTP 400 indicando que el monto debe ser mayor a cero.
-
-3. **Dado** una solicitud SALE con `transactionType` diferente de `SALE`, **Cuando** se valida la solicitud, **Entonces** el sistema retorna HTTP 400 indicando que el tipo de transacción no es soportado.
-
-4. **Dado** una solicitud SALE con formato inválido en `expirationDate`, **Cuando** se ejecuta la validación, **Entonces** el sistema retorna HTTP 400 indicando que el formato de la fecha de expiración es inválido.
-
-5. **Dado** una solicitud SALE válida, **Cuando** finaliza exitosamente la validación, **Entonces** el sistema genera un `transactionId` único en formato UUID v4 de 36 caracteres antes de iniciar el procesamiento transaccional.
-
-6. **Dado** una solicitud SALE con información inconsistente o que incumple reglas de negocio definidas, **Cuando** se ejecuta la validación, **Entonces** la solicitud es rechazada antes de invocar el servicio transaccional.
+1. **Dado** una solicitud sin `terminalId`, **Cuando** se valida, **Entonces** retorna HTTP 400.
+2. **Dado** una solicitud con `totalAmount` menor o igual a 0, **Cuando** se valida, **Entonces** retorna HTTP 400.
+3. **Dado** una solicitud con `transactionType` distinto de `SALE`, **Cuando** se valida, **Entonces** retorna HTTP 400.
+4. **Dado** una solicitud con formato invalido en `expirationDate` (YYMM), **Cuando** se valida, **Entonces** retorna HTTP 400.
+5. **Dado** una operacion previamente procesada con misma clave de negocio, **Cuando** llega un duplicado, **Entonces** la API retorna el resultado existente sin reprocesar.
 
 ---
 
-### Historia de Usuario 3 — Trazabilidad Completa y Auditoría (Prioridad: P2)
+### Historia de Usuario 3 - Trazabilidad Operativa de Extremo a Extremo (Prioridad: P2)
 
-El sistema debe registrar y conservar la información necesaria para que cualquier transacción procesada pueda ser auditada, conciliada e investigada posteriormente mediante los mecanismos corporativos autorizados.
+La API debe permitir rastrear cada operacion con `transactionId` y `correlationId` en logs y trazas.
 
-**Por qué esta prioridad**: La auditoría y trazabilidad son requisitos regulatorios. Auditoría interna, entes reguladores y comercios deben poder rastrear transacciones para investigar incidentes, conciliación y cumplimiento normativo.
+**Por que esta prioridad**: La trazabilidad operativa es obligatoria para soporte, monitoreo e investigacion de incidentes.
 
-**Prueba Independiente**: Puede completarse sin depender de P1:
-1. El sistema procesa 10 transacciones SALE durante un período.
-2. Cada transacción es almacenada con la información requerida para auditoría.
-3. Las trazas registran el flujo completo de procesamiento.
-4. Los logs estructurados permiten correlacionar todos los eventos asociados.
-5. Es posible identificar transactionId, correlationId, autorizador utilizado, resultado y timestamps de procesamiento.
+**Prueba Independiente**:
+1. Cada solicitud genera o propaga `X-Correlation-Id`.
+2. Todos los eventos del flujo incluyen `transactionId` y `correlationId`.
+3. OpenTelemetry exporta trazas con visibilidad de pasos clave del procesamiento.
 
-**Escenarios de Aceptación**:
+**Escenarios de Aceptacion**:
 
-1. **Dado** una transacción procesada con transactionId T1, **Cuando** se inspecciona la información persistida de la transacción, **Entonces** el documento contiene todos los campos de auditoría: transactionId, correlationId, merchantId, createdAt, updatedAt, processingDateTime, authorizationSource, authorizationNumber, responseCode, responseDescription, referenceNumber, hostDate, hostTime, status.
-
-2. **Dado** OpenTelemetry configurado, **Cuando** se procesa una transacción SALE, **Entonces** se exportan trazas completas mostrando: ingreso en controller → validación en application → invocación a servicio transaccional → persistencia en MongoDB → respuesta HTTP.
-
-3. **Dado** un correlationId único para una solicitud SALE, **Cuando** se revisan los logs estructurados, **Entonces** todos los eventos asociados (request, validación, invocación externa, persistencia, response) incluyen ese correlationId.
-
+1. **Dado** una transaccion procesada, **Cuando** se revisan logs, **Entonces** todos los eventos incluyen `correlationId` y `transactionId`.
+2. **Dado** OpenTelemetry habilitado, **Cuando** se procesa una transaccion, **Entonces** la traza contiene validacion, autorizacion y persistencia.
 
 ---
 
-### Historia de Usuario 4 — Disponibilidad y Resiliencia (Prioridad: P3)
+### Historia de Usuario 4 - Disponibilidad y Resiliencia (Prioridad: P3)
 
-El sistema debe continuar operando de forma controlada ante fallos temporales o interrupciones parciales de dependencias externas (servicio transaccional, MongoDB), manteniendo la estabilidad y la trazabilidad de eventos.
+La API opera de forma controlada ante fallos parciales de dependencias externas.
 
-**Por qué esta prioridad**: La resiliencia mejora la experiencia del comercio y reduce pérdida de ingresos, pero es menos crítica que el flujo principal si los mecanismos de retry y circuit breaker están configurados.
+**Por que esta prioridad**: Reduce indisponibilidad total y mejora continuidad de servicio.
 
-**Prueba Independiente**: Puede completarse mediante testing de resiliencia:
-1. Servicio transaccional retorna 503 (unavailable).
-2. El sistema reinventa con backoff exponencial (1s, 2s, 4s).
-3. Tras 3 reintentos fallidos, retorna HTTP 503 al comercio.
-4. El CircuitBreaker se abre (estado OPEN).
-5. Solicitudes subsecuentes retornan HTTP 503 inmediatamente sin invocar el servicio.
-6. El CircuitBreaker se cierra automáticamente tras waitDurationInOpenState (≥ 10 segundos).
+**Prueba Independiente**:
+1. Ante fallos repetidos del API Switch, se abre Circuit Breaker.
+2. Ante timeout, se aplican reintentos con backoff exponencial.
+3. En estado OPEN, la API responde degradado sin bloquear recursos.
 
-**Escenarios de Aceptación**:
+**Escenarios de Aceptacion**:
 
-1. **Dado** que el servicio transaccional está timeout (respuesta > 5s), **Cuando** se recibe una solicitud SALE, **Entonces** el sistema reintenta automáticamente hasta 3 veces con backoff exponencial y jitter.
-
-2. **Dado** que el servicio transaccional ha fallado 10 veces consecutivas, **Cuando** se recibe una nueva solicitud SALE, **Entonces** el CircuitBreaker está en estado OPEN y retorna HTTP 503 sin intentar invocar el servicio.
-
-3. **Dado** que el CircuitBreaker está OPEN, **Cuando** han transcurrido más de 10 segundos, **Entonces** el CircuitBreaker pasa a HALF_OPEN e intenta invocar nuevamente el servicio.
-
-4. **Dado** que MongoDB está temporalmente unavailable, **Cuando** se intenta persistir una transacción, **Entonces** el sistema reinventa la persistencia con backoff y registra el evento en logs estructurados.
+1. **Dado** timeout del API Switch (> 5s), **Cuando** se procesa una solicitud, **Entonces** se aplican reintentos configurados y luego degradacion controlada.
+2. **Dado** fallos consecutivos, **Cuando** el Circuit Breaker esta OPEN, **Entonces** la API responde 503 sin invocacion externa.
 
 ---
 
-### Casos Límite
+### Casos Limite
 
-- ¿Qué ocurre si un comercio envía transactionId duplicado pero con monto diferente? → Retornar HTTP 409 indicando conflicto de datos.
-- ¿Cómo maneja el sistema un token JWT expirado? → Retornar HTTP 401 Unauthorized indicando token inválido o expirado.
-- ¿Qué sucede si el servicio transaccional retorna un responseCode no reconocido? → Registrar el código en MongoDB, mapear a estado UNKNOWN, alertar en observabilidad.
-- ¿Cómo se comporta el sistema con volumen muy alto (10,000 TPS)? → El sistema deberá mantener los niveles de servicio definidos y degradar de forma controlada en caso de alcanzar límites operativos.
-- ¿Qué pasa si la base de datos MongoDB excede capacidad de escritura? → CircuitBreaker en MongoDB se abre; comercios reciben HTTP 503; eventos se registran en logs para reintento posterior.
+- Duplicado por clave de negocio con misma informacion: retornar respuesta existente.
+- JWT expirado o invalido: retornar HTTP 401.
+- API Switch con `responseCode` no reconocido: persistir codigo, mapear estado operativo y alertar en observabilidad.
+- Saturacion temporal de MongoDB: degradacion controlada y eventos trazables.
 
 ---
 
@@ -127,119 +97,58 @@ El sistema debe continuar operando de forma controlada ante fallos temporales o 
 
 ### Requisitos Funcionales
 
-- **RF-001**: El sistema DEBE recibir solicitudes de autorización SALE desde comercios comercios autenticados y autorizados y retornar respuestas estructuradas con resultado de autorización (AUTHORIZED, DECLINED, ERROR) en menos de 3 segundos (P95).
-
-- **RF-002**: Toda solicitud SALE DEBE ser validada antes de iniciar su procesamiento. Como mínimo el sistema deberá validar:
-
-- transactionType obligatorio y con valor SALE.
-- terminalId obligatorio.
-- entryMode obligatorio.
-- totalAmount obligatorio y mayor o igual a cero.
-- accountNumber obligatorio.
-- expirationDate obligatoria y con formato válido.
-- invoice obligatoria.
-- securityCodeEntry obligatorio.
-- securityValidationResponse obligatorio.
-- securityCode obligatorio.
-- binValidate no obligatorio.
-- Integridad y consistencia de la información recibida.
-- Cumplimiento de las reglas de negocio aplicables.
-
-Adicionalmente:
-
-- transactionId deberá generarse como identificador único de la transacción.
-- transactionId deberá tener formato UUID v4.
-- transactionId deberá contener exactamente 36 caracteres.
-- transactionId no podrá reutilizarse para una transacción distinta.
-- Las solicitudes que incumplan cualquiera de las validaciones deberán ser rechazadas antes de invocar el servicio transaccional.
-
-Las solicitudes que incumplan cualquiera de estas validaciones deberán ser rechazadas antes de invocar el servicio transaccional.
-
-- **RF-003**: El sistema DEBE generar automáticamente un transactionId único para cada transacción recibida antes de iniciar su procesamiento. El transactionId deberá tener formato UUID v4, una longitud de 36 caracteres y ser irrepetible durante todo el período de retención de la información. El transactionId deberá utilizarse como identificador único de la operación para fines de trazabilidad, auditoría, monitoreo y correlación de eventos asociados a la transacción.
-
-- **RF-004**: El sistema DEBE enviar solicitudes de autorización a un servicio transaccional especializado, recibir respuestas de autorización financiera e identificar explícitamente el autorizador utilizado (AS400 o CYBERSOURCE).
-
-- **RF-005**: Toda transacción DEBE ser registrada en MongoDB con información completa: transactionId (índice único), correlationId, merchantId, amount, currency, authorizationSource, authorizationNumber, responseCode, responseDescription, timestamps (createdAt, processingDateTime, hostTime, hostDate), status (PENDING, AUTHORIZED, DECLINED, ERROR).
-
-- **RF-006**: El sistema DEBE retener datos de transacciones durante mínimo 18 meses (548 días), con eliminación automática mediante TTL index en MongoDB.
-
-- **RF-007**: El sistema DEBE proporcionar trazabilidad de extremo a extremo mediante CorrelationId, OpenTelemetry, logs estructurados en JSON, permitiendo rastrear flujo completo: ingreso → validación → autorización → persistencia → respuesta.
-
-- **RF-008**: El sistema DEBE conservar toda la información necesaria para soportar procesos de auditoría, conciliación financiera, monitoreo operativo e investigación de incidentes durante el período de retención definido.
-
-- **RF-009**: El sistema DEBE continuar operando de forma controlada ante fallos temporales de dependencias externas, evitando la degradación total del servicio y preservando la trazabilidad de las operaciones afectadas.
-
-- **RF-010**: El sistema DEBE permitir únicamente el acceso de consumidores autenticados y autorizados para procesar transacciones financieras.
-
-- **RF-011**: Las solicitudes que no puedan ser autenticadas o autorizadas deberán ser rechazadas antes de iniciar cualquier procesamiento transaccional.
-
-- **RF-012**: El sistema DEBE generar métricas operativas y de negocio que permitan monitorear el comportamiento de las transacciones SALE y visualizar indicadores de desempeño, disponibilidad, errores y tiempos de respuesta mediante las herramientas corporativas de observabilidad.
-
+- **RF-001**: La API DEBE exponer `POST /api/v1/sales` para procesar transacciones SALE de comercios autenticados y autorizados.
+- **RF-002**: La solicitud DEBE validar como minimo: `merchantId`, `terminalId`, `transactionType`, `totalAmount`, `accountNumber`, `expirationDate`, `invoice`, `securityCodeEntry`, `securityValidationResponse`, `binValidate`, `authenticationInformation`, `tokenizationInformation`, `processingInformation`.
+- **RF-003**: La API DEBE generar `transactionId` automaticamente (UUID v4, 36 caracteres) antes de iniciar el procesamiento.
+- **RF-004**: La deteccion de duplicados DEBE realizarse usando la combinacion: `terminalId`, `invoice`, `totalAmount`, `accountNumber`, `transactionType`.
+- **RF-005**: El `transactionId` DEBE usarse solo para identificacion y trazabilidad de la transaccion, no como clave de duplicados.
+- **RF-006**: `totalAmount` DEBE modelarse como `Long` en unidad monetaria minima (centavos). Ejemplo: 56.33 USD = 5633.
+- **RF-007**: La API DEBE delegar la autorizacion financiera al API Switch, sin logica de seleccion de autorizador dentro de la API SALE.
+- **RF-008**: Toda transaccion DEBE persistirse en MongoDB con retencion de 548 dias (TTL) e indice unico por `transactionId`.
+- **RF-009**: La API DEBE propagar `X-Correlation-Id` y registrar trazabilidad con OpenTelemetry, logs estructurados y Application Insights.
+- **RF-010**: La API DEBE implementar resiliencia con Circuit Breaker, Retry, Bulkhead, TimeLimiter y RateLimiter para dependencias externas.
+- **RF-011**: Los errores DEBEN responder con formato RFC 9457.
 
 ### Entidades Clave *(datos involucrados)*
 
-- **Transacción SALE**: Representa una solicitud de autorización de pago enviada por un comercio. Contiene: transactionId (UUID v4 único), correlationId (UUID v4), merchantId, customerId (enmascarado), amount (BigDecimal), currency (ISO 4217), paymentInstrument (tokenizado), authorizationSource (AS400 | CYBERSOURCE), authorizationNumber, responseCode, responseDescription, status (PENDING | AUTHORIZED | DECLINED | ERROR), createdAt, processingDateTime, hostDate, hostTime, referenceNumber.
+- **SaleTransaction**: `transactionId`, `correlationId`, `merchantId`, `terminalId`, `transactionType`, `totalAmount` (Long en centavos), `accountNumber` (tokenizado/enmascarado), `expirationDate`, `invoice`, `securityValidationResponse`, `binValidate`, `status`, `authorizationResult`, `createdAt`, `processingDateTime`, `updatedAt`.
+- **AuthorizationResponse**: `authorizationSource`, `authorizationNumber`, `responseCode`, `responseDescription`, `referenceNumber`, `hostDate`, `hostTime`.
 
-- **Respuesta de Autorización**: Información retornada por el servicio transaccional indicando resultado de la autorización. Contiene: authorizationNumber, responseCode, responseDescription, authorizationSource, hostDate, hostTime, referenceNumber, status (aprobado/rechazado/error).
+**Fuera de alcance MVP**:
+- Entidad dedicada `TransactionAudit`.
+- Puerto `AuditRepositoryPort`.
+- Caso de uso `RecordAuditUseCase`.
 
-- **Auditoría de Transacción**: Registro de eventos relevantes durante el ciclo de vida de una transacción. Incluye: correlationId, transactionId, timestamp, evento (RECEIVED, VALIDATED, SENT_TO_AUTHORIZER, AUTHORIZATION_RECEIVED, PERSISTED, RESPONSE_SENT), detalles, traceId, spanId.
+La auditoria del MVP se cubre mediante `CorrelationId`, OpenTelemetry, logs estructurados y Application Insights.
 
 ---
 
-## Criterios de Éxito *(obligatorio)*
+## Criterios de Exito *(obligatorio)*
 
 ### Resultados Medibles
 
-- **CE-001**: Latencia P95 de transacciones SALE ≤ 3 segundos bajo condiciones normales (medido desde recepción de solicitud hasta entrega de respuesta al comercio).
-
-- **CE-002**: Latencia P99 de transacciones SALE ≤ 5 segundos bajo condiciones normales.
-
-- **CE-003**: Disponibilidad mensual del sistema ≥ 99.9% (máximo 43.2 minutos de downtime por mes).
-
-- **CE-004**: Tasa de error < 1% (menos de 1 error por cada 100 transacciones procesadas).
-
-- **CE-005**: Cero transacciones duplicadas procesadas: every transactionId retorna resultado consistente en reintentos dentro de ventana de retención.
-
-- **CE-006**: Cero pérdida de datos de transacciones: 100% de transacciones recibidas se persisten en MongoDB dentro de ventana de retención de 18 meses.
-
-- **CE-007**: Trazabilidad completa de 100% de transacciones: cada transacción procesada es rastreable mediante correlationId desde ingreso hasta respuesta final, visible en logs estructurados y OpenTelemetry.
-
-- **CE-008**: Seguridad: 100% de endpoints protegidos con Entra ID JWT, 0 secretos detectados en código, 0 vulnerabilidades CRÍTICAS en OWASP Dependency Check.
-
-- **CE-009**: Calidad de código: SonarQube Quality Gate A, cobertura de pruebas ≥ 80% en Domain y Application, complejidad ciclomática ≤ 10 por método.
-
-- **CE-010**: Documentación API: 100% de endpoints documentados en OpenAPI 3.x + Swagger UI, sin diferencias entre contrato y implementación.
-
-- **CE-011**: El 100% de las métricas operativas requeridas se encuentran disponibles en Grafana y permiten monitorear latencia, disponibilidad, throughput, tasa de errores y estado de las dependencias críticas.
+- **CE-001**: Latencia P95 < 3 segundos.
+- **CE-002**: Latencia P99 < 5 segundos.
+- **CE-003**: Disponibilidad mensual >= 99.9%.
+- **CE-004**: Tasa de error < 1%.
+- **CE-005**: Cero reprocesos para operaciones duplicadas detectadas por la clave de negocio definida.
+- **CE-006**: 100% de transacciones persisten en MongoDB dentro de la ventana de retencion.
+- **CE-007**: 100% de operaciones trazables por `transactionId` y `correlationId`.
+- **CE-008**: 100% de endpoints del MVP protegidos con JWT Entra ID.
+- **CE-009**: OpenAPI y Swagger consistentes con el payload real del MVP.
 
 ---
 
 ## Supuestos
 
-- **Supuesto 1**: Los comercios ya están registrados en el sistema y cuentan con credenciales válidas de Entra ID. La autenticación de comercios la realiza Microsoft Entra ID, no es responsabilidad de esta API.
-
-- **Supuesto 2**: La información de pago (número de tarjeta, cuenta bancaria) llega tokenizada al API. El API nunca maneja datos de pago sensibles sin tokenizar; esta responsabilidad la tiene el comercio o un servicio PCI-compliant anterior.
-
-- **Supuesto 3**: El servicio transaccional ya existe y expone un endpoint REST documentado para procesamiento de autorizaciones. Esta API se integra con él como consumidor.
-
-- **Supuesto 4**: MongoDB Atlas o Azure Cosmos DB para MongoDB API ya está provisionado y disponible. La API solo consume; no la crea.
-
-- **Supuesto 5**: Azure Key Vault ya contiene secretos de integración (credenciales de servicio transaccional, configuración). Managed Identity está configurado.
-
-- **Supuesto 6**: Azure Monitor y Application Insights ya están provisioned. OpenTelemetry exporta automáticamente a estos servicios.
-
-- **Supuesto 7**: Los SLA definidos (latencia P95 < 3s, disponibilidad ≥ 99.9%) son alcanzables con la arquitectura propuesta (Clean Architecture, Resilience4j, Azure App Service, MongoDB).
-
-- **Supuesto 8**: El volumen de transacciones esperado está dentro del rango de capacidad de Azure App Service (replicating horizontalmente según demanda) y MongoDB Atlas/Cosmos DB.
-
-- **Supuesto 9**: La ventana de retención de 18 meses cumple requisitos regulatorios de auditoría y conciliación para transacciones financieras en la jurisdicción operativa.
-
-- **Supuesto 10**: CorrelationId se propaga por el consumidor (comercio) en cada solicitud o se genera automáticamente por el API. OpenTelemetry lo registra en todas las operaciones subsecuentes.
-
-- **Supuesto 11**: Si el consumidor no envía el encabezado X-Correlation-Id, la API generará automáticamente un CorrelationId y lo propagará durante todo el flujo de procesamiento, incluyendo logs, trazas y llamadas al API Switch.
+- Comercios autenticados mediante Microsoft Entra ID.
+- Credenciales del API Switch gestionadas en Azure Key Vault via Managed Identity.
+- Datos de cuenta llegan tokenizados o enmascarados; no se permite PAN en claro.
+- El API Switch expone contrato REST vigente para autorizaciones.
+- Azure Monitor y Application Insights estan disponibles para observabilidad.
 
 ---
 
-**Versión**: 1.0.0  
-**Estado**: Borrador  
-**Fecha de Creación**: 2026-07-22
+**Version**: 1.1.0  
+**Estado**: Borrador alineado para MVP  
+**Fecha de Actualizacion**: 2026-07-22

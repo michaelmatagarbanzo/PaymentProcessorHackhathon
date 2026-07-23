@@ -1,0 +1,27 @@
+# Java / Maven
+/target/
+*.class
+*.jar
+*.war
+*.ear
+
+# Build and tooling
+/build/
+/.gradle/
+
+# Logs
+*.log
+
+# Environment files
+.env*
+
+# IDE and OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.iml
+
+# Temp files
+*.tmp
+*.swp

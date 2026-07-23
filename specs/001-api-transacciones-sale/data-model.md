@@ -2,93 +2,92 @@
 
 **Feature**: `001-api-transacciones-sale`  
 **Fecha**: 2026-07-22  
-**Prerequisito**: [research.md](research.md) completado
+**Prerequisito**: [research.md](research.md)
 
 ---
 
 ## Entidades del Dominio
 
-### 1. SaleTransaction (Raíz de Aggregate)
+### 1. SaleTransaction (Aggregate Root)
 
-**Propósito**: Representa el ciclo de vida completo de una transacción SALE. Es la entidad principal y la única raíz de Aggregate del dominio.
+**Proposito**: Representa el ciclo completo de una transaccion SALE.
 
 **Capa**: `domain/model/`  
 **Tipo Java**: `record` (inmutable)
 
-```
+```text
 SaleTransaction
-├── transactionId       : String (UUID v4, generado por sistema, 36 chars)
-├── correlationId       : String (UUID v4, propagado del request)
-├── merchantId          : String (identificador del comercio, obligatorio)
-├── terminalId          : String (identificador del terminal POS, obligatorio)
-├── transactionType     : TransactionType (enum: SALE)
-├── totalAmount         : Long (monto de la transacción)
-├── accountNumber       : String (cuenta o tarjeta tokenizada)
-├── cardBrand           : CardBrand (determinado a partir del BIN)
-├── expirationDate      : String
-├── invoice             : Long
-├── securityCodeEntry   : String
-├── securityValidationResponse : String
-├── binValidate         : Boolean
-├── status              : TransactionStatus
-├── authorizationResult : AuthorizationResponse
-├── createdAt           : Instant
-├── processingDateTime  : Instant
-└── updatedAt           : Instant
+├── transactionId               : String (UUID v4 generado por API)
+├── correlationId               : String (UUID v4 propagado o generado)
+├── merchantId                  : String
+├── terminalId                  : String
+├── transactionType             : TransactionType (SALE)
+├── totalAmount                 : Long (unidad monetaria minima, centavos)
+├── accountNumber               : String (tokenizado o enmascarado)
+├── expirationDate              : String (YYMM)
+├── invoice                     : Long
+├── securityValidationResponse  : String
+├── binValidate                 : Boolean
+├── status                      : TransactionStatus
+├── authorizationResult         : AuthorizationResponse
+├── createdAt                   : Instant
+├── processingDateTime          : Instant
+└── updatedAt                   : Instant
 ```
 
-**Ciclo de Vida (State Machine)**:
-```
-PENDING → AUTHORIZED
-        → DECLINED
-        → ERROR
-```
+**Regla monetaria**:
+- `totalAmount` usa unidad minima (centavos).
+- Ejemplo: 56.33 USD = 5633.
 
-**Reglas de Dominio / Invariantes**:
-- `transactionId` nunca es `null` ni vacío; es UUID v4.
+**Invariantes**:
+- `transactionId` no puede ser `null` ni vacio.
+- `transactionType` debe ser `SALE`.
 - `totalAmount` debe ser > 0.
-- `accountNumber`  debe contener únicamente datos tokenizados o enmascarados.
--  `invoice` es obligatorio.
-- `transactionType`  debe ser SALE.
-- `cardBrand`  debe determinarse automáticamente a partir del BIN de accountNumber cuando la información esté disponible.
-- Una vez que `status` es `AUTHORIZED`, `DECLINED` o `ERROR` (estado terminal), no puede modificarse.
-- `authorizationResult` solo se establece cuando `status` cambia a estado terminal.
+- `accountNumber` no puede ser PAN en claro.
+- `invoice` es obligatoria.
+- Estados terminales (`AUTHORIZED`, `DECLINED`, `ERROR`) no pueden mutar.
 
+**Deteccion de duplicados**:
+- Se determina por combinacion exacta de:
+  - `terminalId`
+  - `invoice`
+  - `totalAmount`
+  - `accountNumber`
+  - `transactionType`
+
+`transactionId` no participa en la deteccion de duplicados.
 
 ---
 
 ### 2. AuthorizationResponse (Value Object)
 
-**Propósito**: Encapsula la respuesta recibida del API Switch transaccional. Es inmutable una vez creada.
+**Proposito**: Encapsula la respuesta del API Switch.
 
 **Capa**: `domain/model/`  
 **Tipo Java**: `record`
 
-```
+```text
 AuthorizationResponse
-├── authorizationSource   : AuthorizationSource (enum: AS400, CYBERSOURCE, UNKNOWN)
-├── authorizationNumber   : String (número de autorización del autorizador)
-├── responseCode          : String (código de respuesta del autorizador)
-├── responseDescription   : String (descripción de la respuesta)
-├── referenceNumber       : String (número de referencia de la operación)
-├── hostDate              : String (fecha del host autorizador, formato MMDD)
-└── hostTime              : String (hora del host autorizador, formato HHMMSS)
+├── authorizationSource   : AuthorizationSource (AS400 | CYBERSOURCE | UNKNOWN)
+├── authorizationNumber   : String
+├── responseCode          : String
+├── responseDescription   : String
+├── referenceNumber       : String
+├── hostDate              : String (MMDD)
+└── hostTime              : String (HHMMSS)
 ```
 
 **Reglas**:
-- `authorizationSource` nunca es `null`; si no se puede determinar, es `UNKNOWN`.
-- `responseCode` siempre está presente; es la fuente de verdad del resultado de autorización.
-- Una respuesta con `responseCode = "00"` (o equivalente aprobatorio) resulta en `TransactionStatus.AUTHORIZED`.
-- Cualquier otro `responseCode` de negocio resulta en `TransactionStatus.DECLINED`.
-- Fallos de comunicación/timeout resultan en `TransactionStatus.ERROR`.
+- `responseCode` es obligatorio.
+- `responseCode = "00"` mapea a `AUTHORIZED`.
+- Otros `responseCode` de negocio mapean a `DECLINED`.
+- Errores tecnicos/timeout mapean a `ERROR`.
 
 ---
 
+## Enumeraciones
 
-
-## Enumeraciones del Dominio
-
-```
+```text
 TransactionStatus   : PENDING | AUTHORIZED | DECLINED | ERROR
 TransactionType     : SALE
 AuthorizationSource : AS400 | CYBERSOURCE | UNKNOWN
@@ -97,52 +96,50 @@ CardBrand           : VISA | MASTERCARD | AMEX | DISCOVER | OTHER
 
 ---
 
-## Puertos (Interfaces de Application Layer)
+## Puertos (Application Layer)
 
 ### TransactionRepositoryPort
+
 ```java
-// application/port/out/TransactionRepositoryPort.java
 interface TransactionRepositoryPort {
-    void save(SaleTransaction transaction);                          // Persiste nueva transacción
-   Optional<SaleTransaction> findByTransactionId(String id);       // Busca por ID para trazabilidad
-   Optional<SaleTransaction> findDuplicate(
-    String terminalId,
-    Long invoice,
-    Long totalAmount,
-    String accountNumber,
-    String transactionType
-);
-    List<SaleTransaction> findByMerchantId(String merchantId,       // Consulta para auditoría
-                                           Instant from, Instant to,
-                                           int page, int size);
-    void updateStatus(String transactionId,                         // Actualiza estado terminal
-                      TransactionStatus status,
-                      AuthorizationResponse response);
+    void save(SaleTransaction transaction);
+    Optional<SaleTransaction> findByTransactionId(String transactionId);
+    Optional<SaleTransaction> findDuplicate(
+        String terminalId,
+        Long invoice,
+        Long totalAmount,
+        String accountNumber,
+        String transactionType
+    );
+    void updateStatus(
+        String transactionId,
+        TransactionStatus status,
+        AuthorizationResponse response
+    );
 }
 ```
 
 ### AuthorizationSwitchPort
+
 ```java
-// application/port/out/AuthorizationSwitchPort.java
 interface AuthorizationSwitchPort {
-    AuthorizationResponse authorize(SaleTransaction transaction);   // Delega al API Switch
+    AuthorizationResponse authorize(SaleTransaction transaction);
 }
 ```
 
 ### SwitchAuthenticationPort
+
 ```java
-// application/port/out/SwitchAuthenticationPort.java
 interface SwitchAuthenticationPort {
-    String getAccessToken();   // OAuth 2.0 Client Credentials, con caché automática
+    String getAccessToken();
 }
 ```
-
 
 ---
 
 ## Esquema MongoDB
 
-### Colección: `sale_transactions`
+### Coleccion `sale_transactions`
 
 ```json
 {
@@ -152,14 +149,12 @@ interface SwitchAuthenticationPort {
   "merchantId": "MERCHANT-001",
   "terminalId": "TERM-0001",
   "transactionType": "SALE",
-"totalAmount": 77477,
-"accountNumber": "340000000001098",
-"cardBrand": "AMEX",
-"expirationDate": "2805",
-"invoice": 14611279,
-"securityCodeEntry": "1234",
-"securityValidationResponse": "1",
-"binValidate": true,
+  "totalAmount": 5633,
+  "accountNumber": "55189800****2751",
+  "expirationDate": "2805",
+  "invoice": 14611279,
+  "securityValidationResponse": "1",
+  "binValidate": true,
   "status": "AUTHORIZED",
   "authorizationResult": {
     "authorizationSource": "AS400",
@@ -176,87 +171,65 @@ interface SwitchAuthenticationPort {
 }
 ```
 
-### Índices de la Colección
+`securityCodeEntry` no se persiste en MongoDB.
 
-| Nombre | Campos | Tipo | Propósito |
+### Indices
+
+| Nombre | Campos | Tipo | Proposito |
 |--------|--------|------|-----------|
-| `idx_transactionId_unique` | `{ transactionId: 1 }` | Único | Identificación única y trazabilidad |
-| `idx_createdAt_ttl` | `{ createdAt: 1 }` | TTL (47347200s = 548 días) | Retención 18 meses |
-| `idx_merchantId_createdAt` | `{ merchantId: 1, createdAt: -1 }` | Compuesto | Consultas de auditoría por comercio |
-| `idx_status` | `{ status: 1 }` | Simple | Filtros por estado operativo |
+| `idx_transactionId_unique` | `{ transactionId: 1 }` | Unico | Identificacion/trazabilidad |
+| `idx_createdAt_ttl` | `{ createdAt: 1 }` | TTL 47347200s | Retencion 548 dias |
+| `idx_duplicate_validation` | `{ terminalId: 1, invoice: 1, totalAmount: 1, accountNumber: 1, transactionType: 1 }` | Compuesto | Deteccion eficiente de duplicados |
 
+---
 
 ## Transiciones de Estado
 
+```text
+PENDING -> AUTHORIZED
+PENDING -> DECLINED
+PENDING -> ERROR
 ```
-                    ┌─────────────────────────────────────────┐
-                    │                                         │
-  [REQUEST]    ┌────▼─────┐    [SWITCH OK, code=00]   ┌──────▼──────┐
-  ──────────►  │ PENDING  │ ─────────────────────────► │ AUTHORIZED  │
-               └────┬─────┘                            └─────────────┘
-                    │
-                    │  [SWITCH OK, code≠00]            ┌─────────────┐
-                    ├──────────────────────────────────► │  DECLINED   │
-                    │                                   └─────────────┘
-                    │
-                    │  [Timeout / CB open / error]      ┌─────────────┐
-                    └──────────────────────────────────► │    ERROR    │
-                                                        └─────────────┘
-```
-
-**Regla**: AUTHORIZED, DECLINED y ERROR son estados terminales. Ninguna transacción en estado terminal puede ser modificada.
 
 ---
 
-## Reglas de Enmascaramiento de Datos
-
-## Reglas de Enmascaramiento de Datos
+## Proteccion de PAN
 
 | Campo | Almacenamiento | Logs |
 |-------|----------------|------|
-| accountNumber (VISA / MASTERCARD) | Enmascarado | Mostrar BIN de 8 dígitos + enmascarar dígitos intermedios + mostrar últimos 4 dígitos |
-| accountNumber (otros esquemas con BIN de 6) | Enmascarado | Mostrar BIN de 6 dígitos + enmascarar dígitos intermedios + mostrar últimos 4 dígitos |
+| accountNumber (VISA/MC BIN 8) | Enmascarado | BIN 8 + mascara + ultimos 4 |
+| accountNumber (otros BIN 6) | Enmascarado | BIN 6 + mascara + ultimos 4 |
 | securityCodeEntry | NUNCA almacenar | NUNCA registrar |
-| authorizationNumber | Completo | Completo |
-| responseCode | Completo | Completo |
-| correlationId | Completo | Completo |
-| transactionId | Completo | Completo |
+
+Ejemplos validos de salida:
+- `55189800****2751`
+- `123456******1234`
 
 ---
 
-### Reglas de Enmascaramiento de PAN
+## Alcance de Auditoria en MVP
 
-- Para esquemas que utilizan BIN de 8 dígitos (ej. VISA y MASTERCARD), los logs deberán mostrar los primeros 8 dígitos y los últimos 4 dígitos, enmascarando el resto.
+**Fuera de alcance en esta iteracion**:
+- `TransactionAudit` como entidad dedicada
+- `AuditRepositoryPort`
+- `RecordAuditUseCase`
 
-Ejemplo:
-12345678****1234
-
-- Para esquemas que utilizan BIN de 6 dígitos, los logs deberán mostrar los primeros 6 dígitos y los últimos 4 dígitos, enmascarando el resto.
-
-Ejemplo:
-123456******1234
-
-- El securityCodeEntry (CVV/CVC/CID) nunca deberá almacenarse ni registrarse en logs.
-
-- Los datos enmascarados deberán utilizarse en logs, trazas, métricas y mensajes de auditoría.
+**Se mantiene en MVP**:
+- `CorrelationId`
+- OpenTelemetry
+- Logs estructurados JSON
+- Application Insights
 
 ---
 
-## Re-Verificación de Constitución Post-Diseño
+## Re-Verificacion de Constitucion
 
 | Principio | Estado | Evidencia |
 |-----------|--------|-----------|
-| I — Arquitectura Limpia | ✅ | Puertos en `application/port/out`, adaptadores en `infrastructure/adapter` |
-| II — SOLID | ✅ | Value Objects inmutables (record), un port = una responsabilidad, sin `null` en domain |
-| III — Seguridad | ✅ | `accountNumber`  tokenizado o enmascarado, securityCode nunca persistido ni registrado en logs, reglas de enmascaramiento basadas en BIN de 6 u 8 dígitos definidas.|
-| IV — Validación | ✅ | Invariantes de dominio definidas en `SaleTransaction`  |
-| V — Idempotencia | ✅ | Detección de duplicados mediante reglas de negocio utilizando terminalId, invoice, totalAmount, accountNumber y transactionType. transactionId se utiliza únicamente para identificación y trazabilidad. |
-| VI — MongoDB 18 meses | ✅ |  TTL 548 días en la colección `sale_transactions` y retención de información de trazabilidad durante el período definido.|
-| VII — Servicio Transaccional | ✅ | `AuthorizationSwitchPort` encapsula completamente la integración |
-| VIII — Resiliencia | ✅ | Adaptadores decorados con Resilience4j (definido en research.md) |
-| IX — Observabilidad | ✅ |  CorrelationId propagado mediante OpenTelemetry, Application Insights, Azure Monitor y logs estructurados |
-| X — SLA | ✅ | Timeout ≤ 5s en `SwitchApiAdapter` alineado con P95 < 3s |
-| XI — OpenAPI | ✅ | Contratos definidos en `contracts/openapi.yaml` |
-| XII — Azure | ✅ | Sin dependencias de plataforma en entidades de dominio |
+| I - Arquitectura Limpia | PASA | Puertos en application y adaptadores en infrastructure |
+| III - Seguridad | PASA | PAN enmascarado/tokenizado, CVV no persistido |
+| V - Idempotencia | PASA | Duplicados por clave de negocio, no por transactionId |
+| VI - Persistencia | PASA | TTL 548 dias + indice unico transactionId |
+| IX - Observabilidad | PASA | CorrelationId + OTel + logs + App Insights |
 
-**Resultado**: ✅ TODOS LOS PRINCIPIOS PASAN (post-diseño)
+**Resultado**: PASA

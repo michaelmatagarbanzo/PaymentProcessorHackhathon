@@ -1,0 +1,110 @@
+spring:
+  data:
+    mongodb:
+      uri: ${SPRING_DATA_MONGODB_URI}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: ${MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE:health,info,metrics,prometheus}
+  endpoint:
+    health:
+      show-details: ${MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS:always}
+      show-components: ${MANAGEMENT_ENDPOINT_HEALTH_SHOW_COMPONENTS:always}
+  health:
+    circuitbreakers:
+      enabled: ${MANAGEMENT_HEALTH_CIRCUITBREAKERS_ENABLED:true}
+  tracing:
+    sampling:
+      probability: ${MANAGEMENT_TRACING_SAMPLING_PROBABILITY:1.0}
+
+security:
+  audience: ${SECURITY_AUDIENCE}
+  tenant-id: ${SECURITY_TENANT_ID}
+
+switch:
+  base-url: ${SWITCH_API_BASE_URL}
+  timeout-ms: ${SWITCH_TIMEOUT_MS:5000}
+  oauth:
+    token-endpoint: ${SWITCH_OAUTH_TOKEN_ENDPOINT}
+    client-id: ${SWITCH_OAUTH_CLIENT_ID}
+    client-secret: ${SWITCH_OAUTH_CLIENT_SECRET}
+    scope: ${SWITCH_OAUTH_SCOPE:switch.authorize}
+
+azure:
+  keyvault:
+    uri: ${AZURE_KEYVAULT_URI}
+
+# Optional when Azure Monitor/Application Insights exporter uses connection string.
+applicationinsights:
+  connection-string: ${APPLICATIONINSIGHTS_CONNECTION_STRING:}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      switchApi:
+        failure-rate-threshold: ${CB_SWITCH_FAILURE_RATE_THRESHOLD:50}
+        minimum-number-of-calls: ${CB_SWITCH_MINIMUM_CALLS:10}
+        wait-duration-in-open-state: ${CB_SWITCH_WAIT_OPEN:15s}
+        permitted-number-of-calls-in-half-open-state: ${CB_SWITCH_HALF_OPEN_CALLS:5}
+        sliding-window-size: ${CB_SWITCH_SLIDING_WINDOW:20}
+        register-health-indicator: true
+      mongoDb:
+        failure-rate-threshold: ${CB_MONGO_FAILURE_RATE_THRESHOLD:50}
+        minimum-number-of-calls: ${CB_MONGO_MINIMUM_CALLS:10}
+        wait-duration-in-open-state: ${CB_MONGO_WAIT_OPEN:15s}
+        permitted-number-of-calls-in-half-open-state: ${CB_MONGO_HALF_OPEN_CALLS:5}
+        sliding-window-size: ${CB_MONGO_SLIDING_WINDOW:20}
+        register-health-indicator: true
+  retry:
+    instances:
+      switchApi:
+        max-attempts: ${RETRY_SWITCH_MAX_ATTEMPTS:3}
+        wait-duration: ${RETRY_SWITCH_WAIT:500ms}
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: ${RETRY_SWITCH_BACKOFF_MULTIPLIER:2}
+        enable-randomized-wait: true
+      mongoDb:
+        max-attempts: ${RETRY_MONGO_MAX_ATTEMPTS:2}
+        wait-duration: ${RETRY_MONGO_WAIT:200ms}
+  timelimiter:
+    instances:
+      switchApi:
+        timeout-duration: ${TL_SWITCH_TIMEOUT:5s}
+        cancel-running-future: true
+      mongoDb:
+        timeout-duration: ${TL_MONGO_TIMEOUT:3s}
+        cancel-running-future: true
+  bulkhead:
+    instances:
+      switchApi:
+        max-concurrent-calls: ${BH_SWITCH_MAX_CONCURRENT_CALLS:25}
+        max-wait-duration: ${BH_SWITCH_MAX_WAIT:0}
+      mongoDb:
+        max-concurrent-calls: ${BH_MONGO_MAX_CONCURRENT_CALLS:50}
+        max-wait-duration: ${BH_MONGO_MAX_WAIT:0}
+  ratelimiter:
+    instances:
+      switchApi:
+        limit-for-period: ${RL_SWITCH_LIMIT_FOR_PERIOD:200}
+        limit-refresh-period: ${RL_SWITCH_LIMIT_REFRESH_PERIOD:1s}
+        timeout-duration: ${RL_SWITCH_TIMEOUT_DURATION:0}
+
+otel:
+  service:
+    name: ${OTEL_SERVICE_NAME:sale-api}
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT}
+      headers: ${OTEL_EXPORTER_OTLP_HEADERS:}
+  resource:
+    attributes: ${OTEL_RESOURCE_ATTRIBUTES:deployment.environment=azure}

@@ -1,0 +1,112 @@
+spring:
+  application:
+    name: sale-api
+  profiles:
+    default: local
+  data:
+    mongodb:
+      uri: ${SPRING_DATA_MONGODB_URI:mongodb://localhost:27017/sale_db}
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:https://login.microsoftonline.com/common/v2.0}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  health:
+    circuitbreakers:
+      enabled: true
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+
+security:
+  audience: ${SECURITY_AUDIENCE:api://sale-api}
+  tenant-id: ${SECURITY_TENANT_ID:common}
+
+switch:
+  base-url: ${SWITCH_API_BASE_URL:https://switch.internal}
+  timeout-ms: ${SWITCH_TIMEOUT_MS:5000}
+  oauth:
+    token-endpoint: ${SWITCH_OAUTH_TOKEN_ENDPOINT:https://switch.internal/oauth/token}
+    client-id: ${SWITCH_OAUTH_CLIENT_ID:}
+    client-secret: ${SWITCH_OAUTH_CLIENT_SECRET:}
+    scope: ${SWITCH_OAUTH_SCOPE:switch.authorize}
+
+azure:
+  keyvault:
+    uri: ${AZURE_KEYVAULT_URI:https://example-kv.vault.azure.net/}
+
+resilience4j:
+  circuitbreaker:
+    instances:
+      switchApi:
+        failure-rate-threshold: 50
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 5
+        sliding-window-size: 10
+        register-health-indicator: true
+      mongoDb:
+        failure-rate-threshold: 50
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 5
+        sliding-window-size: 10
+        register-health-indicator: true
+  retry:
+    instances:
+      switchApi:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait: true
+      mongoDb:
+        max-attempts: 2
+        wait-duration: 200ms
+  timelimiter:
+    instances:
+      switchApi:
+        timeout-duration: 5s
+        cancel-running-future: true
+      mongoDb:
+        timeout-duration: 3s
+        cancel-running-future: true
+  bulkhead:
+    instances:
+      switchApi:
+        max-concurrent-calls: 25
+        max-wait-duration: 0
+      mongoDb:
+        max-concurrent-calls: 50
+        max-wait-duration: 0
+  ratelimiter:
+    instances:
+      switchApi:
+        limit-for-period: 200
+        limit-refresh-period: 1s
+        timeout-duration: 0
+
+otel:
+  service:
+    name: ${OTEL_SERVICE_NAME:sale-api}
+  exporter:
+    otlp:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}

@@ -1,0 +1,28 @@
+spring:
+  data:
+    mongodb:
+      uri: ${MONGO_URI}
+      database: ${MONGO_DATABASE:DBHackhathon2026}
+      collections:    
+        transactions: Transactions
+        terminals: Terminals
+switch:
+  base-url: http://localhost:8090
+  oauth:
+    token-endpoint: http://localhost:8090/oauth/token
+    client-id: local-client
+    client-secret: local-secret
+    scope: switch.authorize
+
+logging:
+  level:
+    root: INFO
+    com.ecommerce.sale: DEBUG
+
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+
+security:
+  local-jwt-secret: 0123456789abcdef0123456789abcdef
