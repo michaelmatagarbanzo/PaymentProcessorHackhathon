@@ -165,7 +165,7 @@ public class SaleController {
             authorization,
             mapped.processingDateTime(),
             mapped.createdAt(),
-            diagnostics
+            null
         );
 
         LOG.info(

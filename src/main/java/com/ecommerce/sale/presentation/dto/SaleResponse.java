@@ -1,5 +1,6 @@
 package com.ecommerce.sale.presentation.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 
 public record SaleResponse(
@@ -13,6 +14,7 @@ public record SaleResponse(
     AuthorizationResultDto authorization,
     Instant processingDateTime,
     Instant createdAt,
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     java.util.Map<String, Object> diagnostics
 ) {
 

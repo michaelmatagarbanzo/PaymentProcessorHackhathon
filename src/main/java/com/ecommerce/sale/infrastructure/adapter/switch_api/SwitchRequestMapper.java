@@ -115,11 +115,11 @@ public class SwitchRequestMapper {
         return null;
     }
 
-    private String formatAmount(Long amountInCents) {
-        if (amountInCents == null) {
+    private String formatAmount(Long amount) {
+        if (amount == null) {
             return "0.00";
         }
-        return String.format(Locale.US, "%.2f", amountInCents / 100.0d);
+        return String.format(Locale.US, "%.2f", amount.doubleValue());
     }
 
     private String resolveCurrency(ProcessSaleCommand command) {
