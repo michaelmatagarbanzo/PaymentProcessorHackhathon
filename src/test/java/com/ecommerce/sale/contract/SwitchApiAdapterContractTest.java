@@ -70,13 +70,12 @@ class SwitchApiAdapterContractTest {
                                 }
                                 """)));
 
-        AuthorizationResponse response = switchApiAdapter.authorize(pendingTransaction(), sampleCommand(), "token-123");
+        AuthorizationResponse response = switchApiAdapter.authorize(pendingTransaction(), sampleCommand());
 
         assertEquals(AuthorizationSource.AS400, response.authorizationSource());
         assertEquals("00", response.responseCode());
             wireMockServer.verify(postRequestedFor(urlEqualTo("/api/v1/payments"))
                 .withHeader("X-API-Key", equalTo("test-api-key"))
-                        .withHeader("Authorization", equalTo("Bearer token-123"))
                         .withHeader("X-Correlation-Id", equalTo("550e8400-e29b-41d4-a716-446655440000")));
     }
 
@@ -87,7 +86,7 @@ class SwitchApiAdapterContractTest {
 
         assertThrows(
             ExternalDependencyUnavailableException.class,
-            () -> switchApiAdapter.authorize(pendingTransaction(), sampleCommand(), "token-123")
+            () -> switchApiAdapter.authorize(pendingTransaction(), sampleCommand())
         );
     }
 

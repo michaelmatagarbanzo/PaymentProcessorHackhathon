@@ -45,11 +45,7 @@ switch:
     base-url: ${SWITCH_BASE_URL:${SWITCH_API_BASE_URL:}}
     api-key: ${SWITCH_API_KEY:}
   timeout-ms: ${SWITCH_TIMEOUT_MS:5000}
-  oauth:
-    token-endpoint: ${SWITCH_OAUTH_TOKEN_ENDPOINT:}
-    client-id: ${SWITCH_OAUTH_CLIENT_ID:}
-    client-secret: ${SWITCH_OAUTH_CLIENT_SECRET:}
-    scope: ${SWITCH_OAUTH_SCOPE:switch.authorize}
+  # OAuth removed for AppConnector usage; AppConnector uses X-API-Key only
 
 azure:
   keyvault:

@@ -38,7 +38,7 @@ class SwitchApiAdapterTest {
 
         ExternalDependencyUnavailableException ex = assertThrows(
             ExternalDependencyUnavailableException.class,
-            () -> adapter.authorize(pendingTransaction(), sampleCommand(), "token-123")
+            () -> adapter.authorize(pendingTransaction(), sampleCommand())
         );
 
         assertEquals("switch", ex.getDependency());

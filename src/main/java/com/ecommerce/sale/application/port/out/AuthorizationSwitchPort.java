@@ -9,6 +9,5 @@ import com.ecommerce.sale.domain.model.SaleTransaction;
  * La implementación reside en infrastructure (SwitchApiAdapter).
  */
 public interface AuthorizationSwitchPort {
-
-    AuthorizationResponse authorize(SaleTransaction transaction, ProcessSaleCommand command, String accessToken);
+    AuthorizationResponse authorize(SaleTransaction transaction, ProcessSaleCommand command);
 }

@@ -25,15 +25,11 @@ class AuthorizeTransactionUseCaseTest {
 
     @Mock
     private AuthorizationSwitchPort authorizationSwitchPort;
-
-    @Mock
-    private GetSwitchAccessTokenUseCase getSwitchAccessTokenUseCase;
-
     private AuthorizeTransactionUseCase useCase;
 
     @BeforeEach
     void setUp() {
-        useCase = new AuthorizeTransactionUseCase(authorizationSwitchPort, getSwitchAccessTokenUseCase);
+        useCase = new AuthorizeTransactionUseCase(authorizationSwitchPort);
     }
 
     @Test
@@ -50,8 +46,7 @@ class AuthorizeTransactionUseCaseTest {
             "143000"
         );
 
-        when(getSwitchAccessTokenUseCase.execute()).thenReturn("token-123");
-    when(authorizationSwitchPort.authorize(pending, command, "token-123")).thenReturn(response);
+    when(authorizationSwitchPort.authorize(pending, command)).thenReturn(response);
 
     SaleTransaction result = useCase.execute(pending, command);
 
@@ -64,8 +59,7 @@ class AuthorizeTransactionUseCaseTest {
         SaleTransaction pending = pendingTransaction();
         ProcessSaleCommand command = sampleCommand();
 
-        when(getSwitchAccessTokenUseCase.execute()).thenReturn("token-123");
-        when(authorizationSwitchPort.authorize(any(), any(), any()))
+        when(authorizationSwitchPort.authorize(any(), any()))
             .thenThrow(new AuthorizationSwitchException("switch unavailable"));
 
         assertThrows(AuthorizationSwitchException.class, () -> useCase.execute(pending, command));
@@ -76,8 +70,7 @@ class AuthorizeTransactionUseCaseTest {
         SaleTransaction pending = pendingTransaction();
         ProcessSaleCommand command = sampleCommand();
 
-        when(getSwitchAccessTokenUseCase.execute()).thenReturn("token-123");
-        when(authorizationSwitchPort.authorize(any(), any(), any()))
+        when(authorizationSwitchPort.authorize(any(), any()))
             .thenThrow(new IllegalStateException("boom"));
 
         AuthorizationSwitchException ex = assertThrows(

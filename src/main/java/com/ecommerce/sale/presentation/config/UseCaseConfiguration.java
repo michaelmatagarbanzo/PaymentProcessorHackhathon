@@ -7,7 +7,6 @@ import com.ecommerce.sale.application.port.out.TransactionRepositoryPort;
 import com.ecommerce.sale.application.usecase.AuthorizeTransactionUseCase;
 import com.ecommerce.sale.application.usecase.DuplicateDetectionService;
 import com.ecommerce.sale.application.usecase.GenerateTransactionIdUseCase;
-import com.ecommerce.sale.application.usecase.GetSwitchAccessTokenUseCase;
 import com.ecommerce.sale.application.usecase.PersistTransactionUseCase;
 import com.ecommerce.sale.application.usecase.ProcessSaleUseCase;
 import com.ecommerce.sale.application.usecase.ValidateSaleRequestUseCase;
@@ -23,16 +22,10 @@ public class UseCaseConfiguration {
     }
 
     @Bean
-    GetSwitchAccessTokenUseCase getSwitchAccessTokenUseCase(SwitchAuthenticationPort switchAuthenticationPort) {
-        return new GetSwitchAccessTokenUseCase(switchAuthenticationPort);
-    }
-
-    @Bean
     AuthorizeTransactionUseCase authorizeTransactionUseCase(
-        AuthorizationSwitchPort authorizationSwitchPort,
-        GetSwitchAccessTokenUseCase getSwitchAccessTokenUseCase
+        AuthorizationSwitchPort authorizationSwitchPort
     ) {
-        return new AuthorizeTransactionUseCase(authorizationSwitchPort, getSwitchAccessTokenUseCase);
+        return new AuthorizeTransactionUseCase(authorizationSwitchPort);
     }
 
     @Bean

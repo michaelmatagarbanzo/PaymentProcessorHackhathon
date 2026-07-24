@@ -69,7 +69,7 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
     @Bulkhead(name = "switchApi")
     @TimeLimiter(name = "switchApi")
     @RateLimiter(name = "switchApi")
-    public AuthorizationResponse authorize(SaleTransaction transaction, ProcessSaleCommand command, String accessToken) {
+    public AuthorizationResponse authorize(SaleTransaction transaction, ProcessSaleCommand command) {
         long startedAt = System.currentTimeMillis();
         try {
             validateApiKey();
@@ -92,8 +92,7 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
             RestClient.RequestBodySpec requestSpec = restClient.post()
                 .uri(AUTHORIZATION_PATH)
                 .contentType(MediaType.APPLICATION_JSON)
-                .header(API_KEY_HEADER, apiKey)
-                .header("Authorization", "Bearer " + accessToken);
+                .header(API_KEY_HEADER, apiKey);
 
             if (transaction.correlationId() != null && !transaction.correlationId().isBlank()) {
                 requestSpec.header(CORRELATION_HEADER, transaction.correlationId());
