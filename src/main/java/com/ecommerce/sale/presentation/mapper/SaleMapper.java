@@ -26,7 +26,9 @@ public class SaleMapper {
             request.terminalId(),
             request.transactionType(),
             request.totalAmount(),
+            request.currency(),
             request.accountNumber(),
+            null,
             request.expirationDate(),
             request.invoice(),
             request.securityCodeEntry(),
@@ -41,12 +43,15 @@ public class SaleMapper {
     public SaleResponse toResponse(SaleTransaction transaction) {
         LOG.info("event=sale.mapper.toResponse.started correlationId={} transactionId={} status={}",
             transaction.correlationId(), transaction.transactionId(), transaction.status());
+
         return new SaleResponse(
             transaction.transactionId(),
             transaction.correlationId(),
             transaction.status().name(),
             transaction.terminalId(),
             transaction.totalAmount(),
+            null,
+            null,
             toAuthorizationResult(transaction.authorizationResult()),
             transaction.processingDateTime(),
             transaction.createdAt(),

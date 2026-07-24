@@ -69,7 +69,7 @@ class SaleControllerDependencyUnavailableTest {
         );
 
         performRequestAndAssertServiceUnavailable(
-            "/errors/database-unavailable",
+            "https://tools.ietf.org/html/rfc7807",
             "No fue posible acceder a la base de datos"
         );
     }
@@ -87,7 +87,7 @@ class SaleControllerDependencyUnavailableTest {
         );
 
         performRequestAndAssertServiceUnavailable(
-            "/errors/database-unavailable",
+            "https://tools.ietf.org/html/rfc7807",
             "No fue posible acceder a la base de datos"
         );
     }
@@ -119,11 +119,11 @@ class SaleControllerDependencyUnavailableTest {
                 .content(validRequestJson()))
             .andExpect(status().isServiceUnavailable())
             .andExpect(header().string("Retry-After", "30"))
-            .andExpect(jsonPath("$.type").value("/errors/switch-unavailable"))
+            .andExpect(jsonPath("$.type").value("https://tools.ietf.org/html/rfc7807"))
             .andExpect(jsonPath("$.title").value("Dependencia externa no disponible"))
             .andExpect(jsonPath("$.status").value(503))
             .andExpect(jsonPath("$.detail").value("El servicio AppConnector no está disponible temporalmente"))
-            .andExpect(jsonPath("$.instance").value("/api/v1/sales"))
+            .andExpect(jsonPath("$.traceId").value("550e8400-e29b-41d4-a716-446655440000"))
             .andExpect(jsonPath("$.diagnostics.switchEndpoint").value("https://appconnector.azurewebsites.net/api/v1/payments"))
             .andExpect(jsonPath("$.diagnostics.headersSent.X-API-Key").value("dev-func********"));
     }
@@ -135,7 +135,7 @@ class SaleControllerDependencyUnavailableTest {
         when(processSaleUseCase.execute(any())).thenThrow(exception);
 
         performRequestAndAssertServiceUnavailable(
-            "/errors/switch-unavailable",
+            "https://tools.ietf.org/html/rfc7807",
             "El servicio AppConnector no está disponible temporalmente"
         );
     }
@@ -151,7 +151,7 @@ class SaleControllerDependencyUnavailableTest {
             .andExpect(jsonPath("$.title").value("Dependencia externa no disponible"))
             .andExpect(jsonPath("$.status").value(503))
             .andExpect(jsonPath("$.detail").value(expectedDetail))
-            .andExpect(jsonPath("$.instance").value("/api/v1/sales"));
+                .andExpect(jsonPath("$.traceId").value("550e8400-e29b-41d4-a716-446655440000"));
     }
 
     private ProcessSaleCommand validCommand() {
@@ -160,7 +160,9 @@ class SaleControllerDependencyUnavailableTest {
             "TERM-0001",
             "SALE",
             5633L,
+            "USD",
             "55189800****2751",
+            "Test User",
             "2805",
             14611279L,
             "123",

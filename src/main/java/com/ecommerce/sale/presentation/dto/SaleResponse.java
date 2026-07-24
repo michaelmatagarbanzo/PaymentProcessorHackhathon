@@ -8,6 +8,8 @@ public record SaleResponse(
     String status,
     String terminalId,
     Long totalAmount,
+    String currency,
+    String cardHolderName,
     AuthorizationResultDto authorization,
     Instant processingDateTime,
     Instant createdAt,

@@ -334,14 +334,15 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
         }
 
         SwitchAuthorizationRequest.Card safeCard = new SwitchAuthorizationRequest.Card(
-            maskAccountNumber(payload.paymentInformation().card().accountNumber()),
-            payload.paymentInformation().card().expirationDate()
+            maskAccountNumber(payload.paymentInformation().card().number()),
+            payload.paymentInformation().card().expirationMonth(),
+            payload.paymentInformation().card().expirationYear(),
+            "[REDACTED]",
+            payload.paymentInformation().card().cardHolderName()
         );
 
         SwitchAuthorizationRequest.PaymentInformation safePayment = new SwitchAuthorizationRequest.PaymentInformation(
-            safeCard,
-            payload.paymentInformation().securityValidationResponse(),
-            payload.paymentInformation().binValidate()
+            safeCard
         );
 
         return new SwitchAuthorizationRequest(

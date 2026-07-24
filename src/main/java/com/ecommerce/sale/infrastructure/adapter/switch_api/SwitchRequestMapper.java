@@ -6,10 +6,14 @@ import com.ecommerce.sale.domain.model.AuthorizationSource;
 import com.ecommerce.sale.domain.model.SaleTransaction;
 import com.ecommerce.sale.infrastructure.adapter.switch_api.dto.SwitchAuthorizationRequest;
 import com.ecommerce.sale.infrastructure.adapter.switch_api.dto.SwitchAuthorizationResponse;
+import java.util.Locale;
 import org.springframework.stereotype.Component;
 
 @Component
 public class SwitchRequestMapper {
+
+    private static final String DEFAULT_CURRENCY = "USD";
+    private static final String DEFAULT_ENTRY_MODE = "MNL";
 
     public SwitchAuthorizationRequest toRequest(SaleTransaction transaction, ProcessSaleCommand command) {
         SwitchAuthorizationRequest.AuthenticationInformation authenticationInformation = command == null
@@ -43,27 +47,28 @@ public class SwitchRequestMapper {
 
         return new SwitchAuthorizationRequest(
             new SwitchAuthorizationRequest.ClientReferenceInformation(
-                transaction.transactionId(),
-                transaction.correlationId(),
-                transaction.terminalId()
+                String.valueOf(transaction.invoice()),
+                "C2P-" + transaction.invoice()
             ),
             new SwitchAuthorizationRequest.TransactionInformation(
-                transaction.totalAmount(),
                 transaction.transactionType().name(),
-                null
+                transaction.terminalId(),
+                DEFAULT_ENTRY_MODE
             ),
             new SwitchAuthorizationRequest.PaymentInformation(
                 new SwitchAuthorizationRequest.Card(
                     transaction.accountNumber(),
-                    transaction.expirationDate()
-                ),
-                transaction.securityValidationResponse(),
-                transaction.binValidate()
+                    resolveExpirationMonth(transaction.expirationDate()),
+                    resolveExpirationYear(transaction.expirationDate()),
+                    command == null ? null : command.securityCodeEntry(),
+                    command == null ? null : command.cardHolderName()
+                )
             ),
             new SwitchAuthorizationRequest.OrderInformation(
-                transaction.invoice(),
-                transaction.terminalId(),
-                transaction.transactionType().name()
+                new SwitchAuthorizationRequest.AmountDetails(
+                    formatAmount(transaction.totalAmount()),
+                    resolveCurrency(command)
+                )
             ),
             authenticationInformation,
             tokenizationInformation,
@@ -108,5 +113,57 @@ public class SwitchRequestMapper {
             }
         }
         return null;
+    }
+
+    private String formatAmount(Long amountInCents) {
+        if (amountInCents == null) {
+            return "0.00";
+        }
+        return String.format(Locale.US, "%.2f", amountInCents / 100.0d);
+    }
+
+    private String resolveCurrency(ProcessSaleCommand command) {
+        if (command == null || command.currency() == null || command.currency().isBlank()) {
+            return DEFAULT_CURRENCY;
+        }
+        return command.currency().toUpperCase(Locale.ROOT);
+    }
+
+    private String resolveExpirationMonth(String expirationDate) {
+        if (expirationDate == null || expirationDate.length() != 4) {
+            return null;
+        }
+        String first = expirationDate.substring(0, 2);
+        String second = expirationDate.substring(2, 4);
+        int firstNum = parseTwoDigits(first);
+        int secondNum = parseTwoDigits(second);
+
+        if (firstNum > 12) {
+            return second;
+        }
+        if (secondNum > 12) {
+            return first;
+        }
+        return second;
+    }
+
+    private String resolveExpirationYear(String expirationDate) {
+        if (expirationDate == null || expirationDate.length() != 4) {
+            return null;
+        }
+        String first = expirationDate.substring(0, 2);
+        String second = expirationDate.substring(2, 4);
+        int firstNum = parseTwoDigits(first);
+        int secondNum = parseTwoDigits(second);
+        String yy = firstNum > 12 || secondNum <= 12 ? first : second;
+        return "20" + yy;
+    }
+
+    private int parseTwoDigits(String value) {
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException ex) {
+            return -1;
+        }
     }
 }

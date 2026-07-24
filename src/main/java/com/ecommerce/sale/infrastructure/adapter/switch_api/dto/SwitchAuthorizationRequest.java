@@ -15,31 +15,34 @@ public record SwitchAuthorizationRequest(
 
     public record ClientReferenceInformation(
         String code,
-        String correlationId,
-        String terminalId
+        String ecspLogId
     ) {}
 
     public record TransactionInformation(
-        Long totalAmount,
         String transactionType,
-        String currency
+        String terminalId,
+        String entryMode
     ) {}
 
     public record PaymentInformation(
-        Card card,
-        String securityValidationResponse,
-        Boolean binValidate
+        Card card
     ) {}
 
     public record Card(
-        String accountNumber,
-        String expirationDate
+        String number,
+        String expirationMonth,
+        String expirationYear,
+        String securityCode,
+        String cardHolderName
     ) {}
 
     public record OrderInformation(
-        Long invoice,
-        String terminalId,
-        String transactionType
+        AmountDetails amountDetails
+    ) {}
+
+    public record AmountDetails(
+        String totalAmount,
+        String currency
     ) {}
 
     public record AuthenticationInformation(

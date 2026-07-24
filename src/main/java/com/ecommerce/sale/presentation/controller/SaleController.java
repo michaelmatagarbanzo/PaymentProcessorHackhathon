@@ -2,6 +2,7 @@ package com.ecommerce.sale.presentation.controller;
 
 import com.ecommerce.sale.application.usecase.ProcessSaleUseCase;
 import com.ecommerce.sale.domain.model.SaleTransaction;
+import com.ecommerce.sale.infrastructure.adapter.switch_api.dto.SwitchAuthorizationResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ecommerce.sale.presentation.dto.SaleRequest;
@@ -142,26 +143,31 @@ public class SaleController {
         SaleTransaction transaction = processSaleUseCase.execute(saleMapper.toCommand(request, resolvedCorrelationId));
         LOG.info("event=sale.controller.processSale.beforeResponse correlationId={} transactionId={} status={}",
             transaction.correlationId(), transaction.transactionId(), transaction.status());
-        SaleResponse response = saleMapper.toResponse(transaction);
-        // include diagnostics when not prod or when debug enabled
-        boolean includeDiagnostics = appDebugEnabled || !java.util.Arrays.asList(environment.getActiveProfiles()).contains("prod");
-        if (includeDiagnostics) {
-            java.util.Map<String, Object> diag = com.ecommerce.sale.infrastructure.adapter.switch_api.SwitchDiagnosticsContext.pop();
-            if (diag != null) {
-                response = new SaleResponse(
-                    response.transactionId(),
-                    response.correlationId(),
-                    response.status(),
-                    response.terminalId(),
-                    response.totalAmount(),
-                    response.authorization(),
-                    response.processingDateTime(),
-                    response.createdAt(),
-                    (java.util.Map<String, Object>) diag.get("diagnostics")
-                );
-            }
+
+        SaleResponse mapped = saleMapper.toResponse(transaction);
+        Map<String, Object> switchContext = com.ecommerce.sale.infrastructure.adapter.switch_api.SwitchDiagnosticsContext.pop();
+        if (switchContext == null) {
+            switchContext = com.ecommerce.sale.infrastructure.adapter.switch_api.SwitchDiagnosticsContext.popByCorrelationId(transaction.correlationId());
         }
-        SaleResponse.AuthorizationResultDto authorization = response.authorization();
+        Map<String, Object> diagnostics = switchContext == null ? null : asMap(switchContext.get("diagnostics"));
+        SwitchAuthorizationResponse switchResponse = extractSwitchResponse(diagnostics);
+
+        SaleResponse.AuthorizationResultDto authorization = toAuthorizationResultDto(mapped.authorization(), switchResponse);
+
+        SaleResponse response = new SaleResponse(
+            mapped.transactionId(),
+            mapped.correlationId(),
+            mapped.status(),
+            mapped.terminalId(),
+            mapped.totalAmount(),
+            request.currency() == null || request.currency().isBlank() ? "USD" : request.currency(),
+            null,
+            authorization,
+            mapped.processingDateTime(),
+            mapped.createdAt(),
+            diagnostics
+        );
+
         LOG.info(
             "event=sale.response.generated correlationId={} transactionId={} status={} responseCode={} responseMessage={} authorizationCode={} authorizationSource={} processingDateTime={} switchResponse={} responsePayload={}",
             response.correlationId(),
@@ -172,7 +178,7 @@ public class SaleController {
             authorization != null ? authorization.authorizationNumber() : null,
             authorization != null ? authorization.authorizationSource() : null,
             response.processingDateTime(),
-            toJson(authorization),
+            toJson(switchResponse),
             toJson(response)
         );
 
@@ -182,11 +188,104 @@ public class SaleController {
             .body(response);
     }
 
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asMap(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        return null;
+    }
+
+    private SwitchAuthorizationResponse extractSwitchResponse(Map<String, Object> diagnostics) {
+        if (diagnostics == null) {
+            return null;
+        }
+        Map<String, Object> response = asMap(diagnostics.get("response"));
+        if (response == null) {
+            return null;
+        }
+        Object payload = response.get("responsePayload");
+        if (payload instanceof SwitchAuthorizationResponse typedPayload) {
+            return typedPayload;
+        }
+        if (payload instanceof Map<?, ?> payloadMap) {
+            return objectMapper.convertValue(payloadMap, SwitchAuthorizationResponse.class);
+        }
+        return null;
+    }
+
+
+    private SaleResponse.AuthorizationResultDto toAuthorizationResultDto(
+        SaleResponse.AuthorizationResultDto mapped,
+        SwitchAuthorizationResponse switchResponse
+    ) {
+        String authorizationSource = firstNonBlank(
+            mapProviderToAuthorizationSource(switchResponse == null ? null : switchResponse.provider()),
+            mapped == null ? null : mapped.authorizationSource()
+        );
+        String authorizationNumber = firstNonBlank(
+            switchResponse == null ? null : switchResponse.authorizationCode(),
+            mapped == null ? null : mapped.authorizationNumber()
+        );
+        String responseCode = firstNonBlank(
+            switchResponse == null ? null : switchResponse.providerResponseCode(),
+            switchResponse == null ? null : switchResponse.providerStatus(),
+            switchResponse == null ? null : switchResponse.status(),
+            mapped == null ? null : mapped.responseCode()
+        );
+        String responseDescription = firstNonBlank(
+            switchResponse == null ? null : switchResponse.providerMessage(),
+            switchResponse == null ? null : switchResponse.providerStatus(),
+            switchResponse == null ? null : switchResponse.status(),
+            mapped == null ? null : mapped.responseDescription()
+        );
+        String referenceNumber = firstNonBlank(
+            switchResponse == null ? null : switchResponse.referenceNumber(),
+            mapped == null ? null : mapped.referenceNumber()
+        );
+
+        return new SaleResponse.AuthorizationResultDto(
+            authorizationSource,
+            authorizationNumber,
+            responseCode,
+            responseDescription,
+            referenceNumber,
+            mapped == null ? null : mapped.hostDate(),
+            mapped == null ? null : mapped.hostTime()
+        );
+    }
+
+    private String mapProviderToAuthorizationSource(String provider) {
+        if (provider == null || provider.isBlank()) {
+            return null;
+        }
+        if (provider.equalsIgnoreCase("WCF_Pasarelas") || provider.equalsIgnoreCase("AS400")) {
+            return "AS400";
+        }
+        if (provider.equalsIgnoreCase("CyberSource") || provider.equalsIgnoreCase("CYBERSOURCE")) {
+            return "CYBERSOURCE";
+        }
+        return provider;
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
     private Map<String, Object> sanitizedRequestPayload(SaleRequest request) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("terminalId", request.terminalId());
         payload.put("transactionType", request.transactionType());
         payload.put("totalAmount", request.totalAmount());
+        payload.put("currency", request.currency() == null || request.currency().isBlank() ? "USD" : request.currency());
         payload.put("accountNumber", maskAccountNumber(request.accountNumber()));
         payload.put("expirationDate", request.expirationDate());
         payload.put("invoice", request.invoice());

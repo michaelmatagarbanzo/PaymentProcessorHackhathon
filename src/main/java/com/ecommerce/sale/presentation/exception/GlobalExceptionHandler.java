@@ -35,6 +35,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final URI RFC_7807_TYPE = URI.create("https://tools.ietf.org/html/rfc7807");
 
     private static final URI VALIDATION_ERROR_TYPE = URI.create("/errors/validation-error");
     private static final URI DUPLICATE_TRANSACTION_TYPE = URI.create("/errors/duplicate-transaction");
@@ -165,14 +166,25 @@ public class GlobalExceptionHandler {
     private ProblemDetail baseProblem(HttpStatus status, URI type, String title, String detail, HttpServletRequest request) {
         ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(status, detail);
         problemDetail.setTitle(title);
-        problemDetail.setType(type);
-        problemDetail.setInstance(URI.create(request.getRequestURI()));
-        problemDetail.setProperty("timestamp", Instant.now());
+        problemDetail.setType(RFC_7807_TYPE);
+        problemDetail.setProperty("traceId", resolveTraceId(request));
+        return problemDetail;
+    }
+
+    private String resolveTraceId(HttpServletRequest request) {
         String correlationId = request.getHeader("X-Correlation-Id");
         if (correlationId != null && !correlationId.isBlank()) {
-            problemDetail.setProperty("correlationId", correlationId);
+            return correlationId;
         }
-        return problemDetail;
+        String mdcCorrelationId = MDC.get("correlationId");
+        if (mdcCorrelationId != null && !mdcCorrelationId.isBlank()) {
+            return mdcCorrelationId;
+        }
+        String mdcTraceId = MDC.get("traceId");
+        if (mdcTraceId != null && !mdcTraceId.isBlank()) {
+            return mdcTraceId;
+        }
+        return "unknown";
     }
 
     private ResponseEntity<ProblemDetail> externalDependencyUnavailableResponse(String dependency, HttpServletRequest request) {

@@ -11,6 +11,7 @@ public record SaleRequest(
     @NotBlank @Size(max = 20) String terminalId,
     @NotBlank @Pattern(regexp = "SALE") String transactionType,
     @NotNull @Min(1) Long totalAmount,
+    @Size(min = 3, max = 3) String currency,
     @NotBlank @Size(min = 8, max = 100) String accountNumber,
     @NotBlank @Pattern(regexp = "^(\\d{2})(0[1-9]|1[0-2])$") String expirationDate,
     @NotNull @Min(1) Long invoice,
