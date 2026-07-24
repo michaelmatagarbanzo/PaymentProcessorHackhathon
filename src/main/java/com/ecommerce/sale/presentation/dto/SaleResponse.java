@@ -2,13 +2,14 @@ package com.ecommerce.sale.presentation.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
+import java.math.BigDecimal;
 
 public record SaleResponse(
     String transactionId,
     String correlationId,
     String status,
     String terminalId,
-    Long totalAmount,
+    BigDecimal totalAmount,
     String currency,
     String cardHolderName,
     AuthorizationResultDto authorization,

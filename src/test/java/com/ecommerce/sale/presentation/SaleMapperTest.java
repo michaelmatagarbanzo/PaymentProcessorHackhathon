@@ -7,6 +7,7 @@ import com.ecommerce.sale.domain.model.TransactionStatus;
 import com.ecommerce.sale.domain.model.TransactionType;
 import com.ecommerce.sale.presentation.dto.SaleResponse;
 import com.ecommerce.sale.presentation.mapper.SaleMapper;
+import java.math.BigDecimal;
 import java.time.Instant;
 import org.junit.jupiter.api.Test;
 
@@ -41,7 +42,7 @@ class SaleMapperTest {
         assertEquals("corr-123", response.correlationId());
         assertEquals("AUTHORIZED", response.status());
         assertEquals("TERM-0001", response.terminalId());
-        assertEquals(5633L, response.totalAmount());
+        assertEquals(new BigDecimal("56.33"), response.totalAmount());
         assertEquals(now, response.processingDateTime());
         assertEquals(now, response.createdAt());
     }

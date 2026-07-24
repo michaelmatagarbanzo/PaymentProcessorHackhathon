@@ -119,7 +119,7 @@ public class SwitchRequestMapper {
         if (amount == null) {
             return "0.00";
         }
-        return String.format(Locale.US, "%.2f", amount.doubleValue());
+        return String.format(Locale.US, "%.2f", amount / 100.0d);
     }
 
     private String resolveCurrency(ProcessSaleCommand command) {

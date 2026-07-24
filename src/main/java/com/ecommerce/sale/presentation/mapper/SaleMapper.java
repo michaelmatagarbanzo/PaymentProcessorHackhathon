@@ -11,6 +11,8 @@ import com.ecommerce.sale.presentation.dto.ProcessingInformationDto;
 import com.ecommerce.sale.presentation.dto.SaleRequest;
 import com.ecommerce.sale.presentation.dto.SaleResponse;
 import com.ecommerce.sale.presentation.dto.TokenizationInformationDto;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -25,7 +27,7 @@ public class SaleMapper {
             correlationId,
             request.terminalId(),
             request.transactionType(),
-            request.totalAmount(),
+            toMinorUnits(request.totalAmount()),
             request.currency(),
             request.accountNumber(),
             null,
@@ -49,7 +51,7 @@ public class SaleMapper {
             transaction.correlationId(),
             transaction.status().name(),
             transaction.terminalId(),
-            transaction.totalAmount(),
+            toMajorUnits(transaction.totalAmount()),
             null,
             null,
             toAuthorizationResult(transaction.authorizationResult()),
@@ -99,5 +101,22 @@ public class SaleMapper {
             response.hostDate(),
             response.hostTime()
         );
+    }
+
+    private Long toMinorUnits(BigDecimal amount) {
+        if (amount == null) {
+            return null;
+        }
+        return amount
+            .setScale(2, RoundingMode.HALF_UP)
+            .movePointRight(2)
+            .longValueExact();
+    }
+
+    private BigDecimal toMajorUnits(Long amountInCents) {
+        if (amountInCents == null) {
+            return null;
+        }
+        return BigDecimal.valueOf(amountInCents, 2);
     }
 }
