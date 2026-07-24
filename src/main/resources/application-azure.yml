@@ -15,6 +15,11 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+app:
+  debug:
+    # Keep diagnostics available in Azure unless explicitly disabled
+    enabled: ${APP_DEBUG_ENABLED:true}
+
 management:
   endpoints:
     web:

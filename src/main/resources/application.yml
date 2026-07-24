@@ -15,6 +15,10 @@ spring:
 server:
   port: ${SERVER_PORT:8080}
 
+app:
+  debug:
+    enabled: ${APP_DEBUG_ENABLED:false}
+
 management:
   endpoints:
     web:

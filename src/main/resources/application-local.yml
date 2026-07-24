@@ -24,3 +24,7 @@ management:
 
 security:
   local-jwt-secret: 0123456789abcdef0123456789abcdef
+
+app:
+  debug:
+    enabled: ${APP_DEBUG_ENABLED:true}
