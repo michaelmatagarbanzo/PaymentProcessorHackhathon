@@ -244,6 +244,11 @@ public class GlobalExceptionHandler {
             normalized.put("response", response);
         }
 
+        Object error = rawDiagnostics.get("error");
+        if (error != null) {
+            normalized.put("error", error);
+        }
+
         Object timestamp = rawDiagnostics.get("timestamp");
         if (timestamp != null) {
             normalized.put("timestamp", timestamp);

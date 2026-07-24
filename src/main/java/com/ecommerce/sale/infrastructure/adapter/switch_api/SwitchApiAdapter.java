@@ -247,15 +247,43 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
             );
             String statusCode = extractHttpStatusCode(ex);
             String responseBody = extractHttpResponseBody(ex);
-            Map<String, String> aiAttrs = Map.of(
-                "correlationId", safe(transaction.correlationId()),
-                "transactionId", safe(transaction.transactionId()),
-                "endpoint", endpoint,
-                "error", ex.getClass().getSimpleName(),
-                "statusCode", statusCode,
-                "headers", toJson(headersSent),
-                "responseBody", safeForTelemetry(responseBody)
-            );
+            String requestPayload = "";
+            if (stored != null && stored.get("diagnostics") instanceof Map<?, ?> diagnosticsMap) {
+                Object requestPayloadObj = diagnosticsMap.get("requestPayload");
+                if (requestPayloadObj != null) {
+                    requestPayload = toJson(requestPayloadObj);
+                }
+            }
+            if (stored != null && stored.get("diagnostics") instanceof Map<?, ?> diagnosticsMap) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> mutableDiagnostics = (Map<String, Object>) diagnosticsMap;
+                mutableDiagnostics.put("switchEndpoint", endpoint);
+                mutableDiagnostics.put("headersSent", headersSent);
+
+                Map<String, Object> responseDiagnostics = new LinkedHashMap<>();
+                responseDiagnostics.put("statusCode", statusCode);
+                responseDiagnostics.put("responseBody", responseBody == null || responseBody.isBlank() ? "" : responseBody);
+                mutableDiagnostics.put("response", responseDiagnostics);
+
+                Map<String, Object> errorDiagnostics = new LinkedHashMap<>();
+                errorDiagnostics.put("statusCode", statusCode);
+                errorDiagnostics.put("exceptionType", ex.getClass().getSimpleName());
+                errorDiagnostics.put("exceptionMessage", ex.getMessage());
+                errorDiagnostics.put("responseBody", responseBody == null || responseBody.isBlank() ? "" : responseBody);
+                mutableDiagnostics.put("error", errorDiagnostics);
+            }
+
+            Map<String, String> aiAttrs = new LinkedHashMap<>();
+            aiAttrs.put("correlationId", safe(transaction.correlationId()));
+            aiAttrs.put("transactionId", safe(transaction.transactionId()));
+            aiAttrs.put("endpoint", endpoint);
+            aiAttrs.put("error", ex.getClass().getSimpleName());
+            aiAttrs.put("exceptionMessage", safeForTelemetry(ex.getMessage()));
+            aiAttrs.put("statusCode", statusCode);
+            aiAttrs.put("durationMs", String.valueOf(duration));
+            aiAttrs.put("headers", toJson(headersSent));
+            aiAttrs.put("requestPayload", safeForTelemetry(requestPayload));
+            aiAttrs.put("responseBody", safeForTelemetry(responseBody));
             applicationInsightsAdapter.event("switch.http.error", aiAttrs);
             Map<String, Object> httpErrorLog = new LinkedHashMap<>();
             httpErrorLog.put("event", "switch.http.error");
@@ -269,7 +297,7 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
             httpErrorLog.put("responseBody", responseBody == null || responseBody.isBlank()
                 ? stored != null ? stored.get("response") : null
                 : responseBody);
-            LOG.info("event=switch.http.error payload={}", toJson(httpErrorLog));
+            LOG.error("event=switch.http.error payload={}", toJson(httpErrorLog));
             applicationInsightsAdapter.increment("switch.authorization.total", Map.of("status", "ERROR"));
             applicationInsightsAdapter.timing("switch.authorization.latency", duration, Map.of("status", "ERROR"));
             applicationInsightsAdapter.event("switch.authorization.failed", Map.of(
