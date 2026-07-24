@@ -13,11 +13,13 @@ import com.ecommerce.sale.application.usecase.ProcessSaleUseCase;
 import com.ecommerce.sale.domain.exception.AuthorizationSwitchException;
 import com.ecommerce.sale.domain.exception.TransactionPersistenceException;
 import com.ecommerce.sale.infrastructure.exception.ExternalDependencyUnavailableException;
+import com.ecommerce.sale.infrastructure.adapter.switch_api.SwitchDiagnosticsContext;
 import com.ecommerce.sale.presentation.controller.SaleController;
 import com.ecommerce.sale.presentation.exception.GlobalExceptionHandler;
 import com.ecommerce.sale.presentation.mapper.SaleMapper;
 import com.mongodb.MongoTimeoutException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import java.util.Map;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.BeforeEach;
@@ -92,6 +94,18 @@ class SaleControllerDependencyUnavailableTest {
 
     @Test
     void shouldReturn503WhenSwitchTimesOut() throws Exception {
+        SwitchDiagnosticsContext.set(Map.of(
+            "diagnostics", Map.of(
+                "switchEndpoint", "https://appconnector.azurewebsites.net/api/v1/payments",
+                "headersSent", Map.of(
+                    "Content-Type", "application/json",
+                    "X-API-Key", "dev-func********",
+                    "X-Correlation-Id", "550e8400-e29b-41d4-a716-446655440000"
+                ),
+                "response", Map.of("statusCode", "UNKNOWN")
+            )
+        ));
+
         when(processSaleUseCase.execute(any())).thenThrow(
             new AuthorizationSwitchException(
                 "switch timeout",
@@ -99,10 +113,19 @@ class SaleControllerDependencyUnavailableTest {
             )
         );
 
-        performRequestAndAssertServiceUnavailable(
-            "/errors/switch-unavailable",
-            "El servicio AppConnector no está disponible temporalmente"
-        );
+        mockMvc.perform(post("/api/v1/sales")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("X-Correlation-Id", "550e8400-e29b-41d4-a716-446655440000")
+                .content(validRequestJson()))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(header().string("Retry-After", "30"))
+            .andExpect(jsonPath("$.type").value("/errors/switch-unavailable"))
+            .andExpect(jsonPath("$.title").value("Dependencia externa no disponible"))
+            .andExpect(jsonPath("$.status").value(503))
+            .andExpect(jsonPath("$.detail").value("El servicio AppConnector no está disponible temporalmente"))
+            .andExpect(jsonPath("$.instance").value("/api/v1/sales"))
+            .andExpect(jsonPath("$.diagnostics.switchEndpoint").value("https://appconnector.azurewebsites.net/api/v1/payments"))
+            .andExpect(jsonPath("$.diagnostics.headersSent.X-API-Key").value("dev-func********"));
     }
 
     @Test

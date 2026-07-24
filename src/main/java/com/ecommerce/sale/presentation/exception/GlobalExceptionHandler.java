@@ -6,6 +6,7 @@ import com.ecommerce.sale.domain.exception.InvalidSaleRequestException;
 import com.ecommerce.sale.domain.exception.SaleDomainException;
 import com.ecommerce.sale.domain.exception.SwitchAuthenticationException;
 import com.ecommerce.sale.domain.exception.TransactionPersistenceException;
+import com.ecommerce.sale.infrastructure.adapter.switch_api.SwitchDiagnosticsContext;
 import com.ecommerce.sale.infrastructure.exception.ExternalDependencyUnavailableException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
@@ -108,6 +109,7 @@ public class GlobalExceptionHandler {
             ex.getMessage(),
             request
         );
+        enrichWithSwitchDiagnostics(detail);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
             .header(HttpHeaders.RETRY_AFTER, "2")
             .body(detail);
@@ -182,9 +184,23 @@ public class GlobalExceptionHandler {
             detailMessage,
             request
         );
+        if (SWITCH_UNAVAILABLE_TYPE.equals(type)) {
+            enrichWithSwitchDiagnostics(detail);
+        }
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
             .header(HttpHeaders.RETRY_AFTER, "30")
             .body(detail);
+    }
+
+    private void enrichWithSwitchDiagnostics(ProblemDetail detail) {
+        Map<String, Object> ctx = SwitchDiagnosticsContext.pop();
+        if (ctx == null) {
+            return;
+        }
+        Object diagnostics = ctx.get("diagnostics");
+        if (diagnostics instanceof Map<?, ?>) {
+            detail.setProperty("diagnostics", diagnostics);
+        }
     }
 
     private URI resolveExternalDependencyType(String dependency) {

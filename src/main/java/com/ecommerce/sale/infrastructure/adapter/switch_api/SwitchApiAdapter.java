@@ -26,8 +26,10 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
@@ -99,17 +101,21 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
                 requestSpec.header(CORRELATION_HEADER, transaction.correlationId());
             }
 
+            Map<String, String> safeHeaders = Map.of(
+                "Content-Type", "application/json",
+                API_KEY_HEADER, maskApiKey(apiKey),
+                CORRELATION_HEADER, transaction.correlationId() == null ? "" : transaction.correlationId()
+            );
+
+            SwitchAuthorizationRequest safePayload = sanitizeRequestPayload(payload);
+
             // Build diagnostics and publish event
             Map<String, Object> diag = Map.of(
                 "endpoint", endpoint,
                 "method", "POST",
                 "provider", EXPECTED_PROVIDER,
-                "headersSent", Map.of(
-                    "Content-Type", "application/json",
-                    API_KEY_HEADER, maskApiKey(apiKey),
-                    CORRELATION_HEADER, transaction.correlationId() == null ? "" : transaction.correlationId()
-                ),
-                "requestPayload", sanitizeRequestPayload(payload),
+                "headersSent", safeHeaders,
+                "requestPayload", safePayload,
                 "timestamp", System.currentTimeMillis()
             );
 
@@ -127,8 +133,8 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
                 "endpoint", endpoint,
                 "method", "POST",
                 "provider", EXPECTED_PROVIDER,
-                "headers", Map.of(API_KEY_HEADER, maskApiKey(apiKey), CORRELATION_HEADER, transaction.correlationId() == null ? "" : transaction.correlationId()),
-                "body", sanitizeRequestPayload(payload),
+                "headers", safeHeaders,
+                "body", safePayload,
                 "timestamp", System.currentTimeMillis()
             )));
 
@@ -138,13 +144,27 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
                 "transactionId", safe(transaction.transactionId()),
                 "endpoint", endpoint,
                 "method", "POST",
-                "provider", EXPECTED_PROVIDER
+                "provider", EXPECTED_PROVIDER,
+                "headers", toJson(safeHeaders),
+                "requestPayload", toJson(safePayload)
             ));
 
-            SwitchAuthorizationResponse response = requestSpec
+            LOG.info("event=switch.http.request.sent correlationId={} transactionId={} endpoint={} method={}",
+                safe(transaction.correlationId()), safe(transaction.transactionId()), endpoint, "POST");
+            applicationInsightsAdapter.event("switch.http.request.sent", Map.of(
+                "correlationId", safe(transaction.correlationId()),
+                "transactionId", safe(transaction.transactionId()),
+                "endpoint", endpoint,
+                "method", "POST"
+            ));
+
+            ResponseEntity<SwitchAuthorizationResponse> responseEntity = requestSpec
                 .body(payload)
                 .retrieve()
-                .body(SwitchAuthorizationResponse.class);
+                .toEntity(SwitchAuthorizationResponse.class);
+
+            int httpStatus = responseEntity.getStatusCode().value();
+            SwitchAuthorizationResponse response = responseEntity.getBody();
 
             if (response == null) {
                 throw new AuthorizationSwitchException("El API Switch devolvió una respuesta vacía");
@@ -154,7 +174,7 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
             // Log and publish response diagnostics
             Map<String, Object> responseDiag = Map.of(
                 "endpoint", endpoint,
-                "statusCode", "UNKNOWN",
+                "statusCode", httpStatus,
                 "durationMs", duration,
                 "responsePayload", response
             );
@@ -171,7 +191,7 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
                 "correlationId", safe(transaction.correlationId()),
                 "transactionId", safe(transaction.transactionId()),
                 "endpoint", endpoint,
-                "statusCode", "UNKNOWN",
+                "statusCode", httpStatus,
                 "durationMs", duration,
                 "response", response
             )));
@@ -180,7 +200,10 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
                 "correlationId", safe(transaction.correlationId()),
                 "transactionId", safe(transaction.transactionId()),
                 "endpoint", endpoint,
-                "provider", safe(response.provider())
+                "provider", safe(response.provider()),
+                "statusCode", String.valueOf(httpStatus),
+                "durationMs", String.valueOf(duration),
+                "responsePayload", toJson(response)
             ));
             applicationInsightsAdapter.increment("switch.authorization.total",
                 Map.of("status", response.providerResponseCode() == null ? "UNKNOWN" : response.providerResponseCode()));
@@ -222,11 +245,16 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
                 API_KEY_HEADER, maskApiKey(apiKey),
                 CORRELATION_HEADER, transaction.correlationId() == null ? "" : transaction.correlationId()
             );
+            String statusCode = extractHttpStatusCode(ex);
+            String responseBody = extractHttpResponseBody(ex);
             Map<String, String> aiAttrs = Map.of(
                 "correlationId", safe(transaction.correlationId()),
                 "transactionId", safe(transaction.transactionId()),
                 "endpoint", endpoint,
-                "error", ex.getClass().getSimpleName()
+                "error", ex.getClass().getSimpleName(),
+                "statusCode", statusCode,
+                "headers", toJson(headersSent),
+                "responseBody", safeForTelemetry(responseBody)
             );
             applicationInsightsAdapter.event("switch.http.error", aiAttrs);
             Map<String, Object> httpErrorLog = new LinkedHashMap<>();
@@ -235,10 +263,12 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
             httpErrorLog.put("transactionId", safe(transaction.transactionId()));
             httpErrorLog.put("endpoint", endpoint);
             httpErrorLog.put("headersSent", headersSent);
-            httpErrorLog.put("statusCode", "UNKNOWN");
+            httpErrorLog.put("statusCode", statusCode);
             httpErrorLog.put("exceptionType", ex.getClass().getSimpleName());
             httpErrorLog.put("exceptionMessage", ex.getMessage());
-            httpErrorLog.put("responseBody", stored != null ? stored.get("response") : null);
+            httpErrorLog.put("responseBody", responseBody == null || responseBody.isBlank()
+                ? stored != null ? stored.get("response") : null
+                : responseBody);
             LOG.info("event=switch.http.error payload={}", toJson(httpErrorLog));
             applicationInsightsAdapter.increment("switch.authorization.total", Map.of("status", "ERROR"));
             applicationInsightsAdapter.timing("switch.authorization.latency", duration, Map.of("status", "ERROR"));
@@ -330,6 +360,35 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
         } catch (JsonProcessingException ex) {
             return "{\"serializationError\":\"" + ex.getClass().getSimpleName() + "\"}";
         }
+    }
+
+    private String extractHttpStatusCode(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof HttpStatusCodeException statusEx) {
+                return String.valueOf(statusEx.getStatusCode().value());
+            }
+            current = current.getCause();
+        }
+        return "UNKNOWN";
+    }
+
+    private String extractHttpResponseBody(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof HttpStatusCodeException statusEx) {
+                return statusEx.getResponseBodyAsString();
+            }
+            current = current.getCause();
+        }
+        return "";
+    }
+
+    private String safeForTelemetry(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.length() > 5000 ? value.substring(0, 5000) + "...(truncated)" : value;
     }
 
     private boolean isExternalDependencyFailure(Throwable throwable) {
