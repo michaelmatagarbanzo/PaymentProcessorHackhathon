@@ -98,6 +98,25 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
                 requestSpec.header(CORRELATION_HEADER, transaction.correlationId());
             }
 
+            // Log full HTTP request details for observability (mask sensitive values)
+            Map<String, Object> requestLog = Map.of(
+                "event", "switch.http.request",
+                "correlationId", safe(transaction.correlationId()),
+                "transactionId", safe(transaction.transactionId()),
+                "terminalId", safe(transaction.terminalId()),
+                "endpoint", endpoint,
+                "method", "POST",
+                "provider", EXPECTED_PROVIDER,
+                "headers", Map.of(
+                    API_KEY_HEADER, maskApiKey(apiKey),
+                    CORRELATION_HEADER, transaction.correlationId() == null ? "" : transaction.correlationId()
+                ),
+                "body", sanitizeRequestPayload(payload),
+                "timestamp", System.currentTimeMillis()
+            );
+
+            LOG.info("event=switch.http.request payload={}", toJson(requestLog));
+
             SwitchAuthorizationResponse response = requestSpec
                 .body(payload)
                 .retrieve()
@@ -108,6 +127,21 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
             }
 
             long duration = System.currentTimeMillis() - startedAt;
+            // Log HTTP response details for observability
+            Map<String, Object> responseLog = Map.of(
+                "event", "switch.http.response",
+                "correlationId", safe(transaction.correlationId()),
+                "transactionId", safe(transaction.transactionId()),
+                "endpoint", endpoint,
+                "statusCode", "UNKNOWN",
+                "durationMs", duration,
+                "response", response,
+                "provider", safe(response.provider()),
+                "providerStatus", safe(response.status()),
+                "providerResponseCode", response.providerResponseCode() == null ? "UNKNOWN" : response.providerResponseCode()
+            );
+
+            LOG.info("event=switch.http.response payload={}", toJson(responseLog));
             applicationInsightsAdapter.increment("switch.authorization.total",
                 Map.of("status", response.providerResponseCode() == null ? "UNKNOWN" : response.providerResponseCode()));
             applicationInsightsAdapter.timing("switch.authorization.latency", duration,
@@ -213,6 +247,16 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
         return digitsOnly.substring(0, prefixLength)
             + "*".repeat(Math.max(maskedLength, 0))
             + digitsOnly.substring(digitsOnly.length() - 4);
+    }
+
+    private String maskApiKey(String key) {
+        if (key == null || key.isBlank()) {
+            return "[REDACTED]";
+        }
+        int visible = Math.min(7, key.length());
+        String prefix = key.substring(0, visible);
+        int maskedLen = Math.max(0, key.length() - visible);
+        return prefix + "*".repeat(maskedLen);
     }
 
     private String toJson(Object value) {
