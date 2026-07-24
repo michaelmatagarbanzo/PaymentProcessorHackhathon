@@ -43,12 +43,18 @@ public class SaleController {
     private final ProcessSaleUseCase processSaleUseCase;
     private final SaleMapper saleMapper;
     private final ObjectMapper objectMapper;
+    private final org.springframework.core.env.Environment environment;
+    private final boolean appDebugEnabled;
 
     @Autowired
-    public SaleController(ProcessSaleUseCase processSaleUseCase, SaleMapper saleMapper) {
+    public SaleController(ProcessSaleUseCase processSaleUseCase, SaleMapper saleMapper,
+                          org.springframework.core.env.Environment environment,
+                          @org.springframework.beans.factory.annotation.Value("${app.debug.enabled:false}") boolean appDebugEnabled) {
         this.processSaleUseCase = processSaleUseCase;
         this.saleMapper = saleMapper;
         this.objectMapper = new ObjectMapper();
+        this.environment = environment;
+        this.appDebugEnabled = appDebugEnabled;
     }
 
     @PostMapping
@@ -137,6 +143,24 @@ public class SaleController {
         LOG.info("event=sale.controller.processSale.beforeResponse correlationId={} transactionId={} status={}",
             transaction.correlationId(), transaction.transactionId(), transaction.status());
         SaleResponse response = saleMapper.toResponse(transaction);
+        // include diagnostics when not prod or when debug enabled
+        boolean includeDiagnostics = appDebugEnabled || !java.util.Arrays.asList(environment.getActiveProfiles()).contains("prod");
+        if (includeDiagnostics) {
+            java.util.Map<String, Object> diag = com.ecommerce.sale.infrastructure.adapter.switch_api.SwitchDiagnosticsContext.pop();
+            if (diag != null) {
+                response = new SaleResponse(
+                    response.transactionId(),
+                    response.correlationId(),
+                    response.status(),
+                    response.terminalId(),
+                    response.totalAmount(),
+                    response.authorization(),
+                    response.processingDateTime(),
+                    response.createdAt(),
+                    (java.util.Map<String, Object>) diag.get("diagnostics")
+                );
+            }
+        }
         SaleResponse.AuthorizationResultDto authorization = response.authorization();
         LOG.info(
             "event=sale.response.generated correlationId={} transactionId={} status={} responseCode={} responseMessage={} authorizationCode={} authorizationSource={} processingDateTime={} switchResponse={} responsePayload={}",

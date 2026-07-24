@@ -10,7 +10,8 @@ public record SaleResponse(
     Long totalAmount,
     AuthorizationResultDto authorization,
     Instant processingDateTime,
-    Instant createdAt
+    Instant createdAt,
+    java.util.Map<String, Object> diagnostics
 ) {
 
     public record AuthorizationResultDto(

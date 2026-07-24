@@ -98,24 +98,47 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
                 requestSpec.header(CORRELATION_HEADER, transaction.correlationId());
             }
 
-            // Log full HTTP request details for observability (mask sensitive values)
-            Map<String, Object> requestLog = Map.of(
-                "event", "switch.http.request",
-                "correlationId", safe(transaction.correlationId()),
-                "transactionId", safe(transaction.transactionId()),
-                "terminalId", safe(transaction.terminalId()),
+            // Build diagnostics and publish event
+            Map<String, Object> diag = Map.of(
                 "endpoint", endpoint,
                 "method", "POST",
                 "provider", EXPECTED_PROVIDER,
-                "headers", Map.of(
+                "headersSent", Map.of(
+                    "Content-Type", "application/json",
                     API_KEY_HEADER, maskApiKey(apiKey),
                     CORRELATION_HEADER, transaction.correlationId() == null ? "" : transaction.correlationId()
                 ),
-                "body", sanitizeRequestPayload(payload),
+                "requestPayload", sanitizeRequestPayload(payload),
                 "timestamp", System.currentTimeMillis()
             );
 
-            LOG.info("event=switch.http.request payload={}", toJson(requestLog));
+            // store diagnostics for controller to include in API response if needed
+            SwitchDiagnosticsContext.set(Map.of(
+                "correlationId", safe(transaction.correlationId()),
+                "transactionId", safe(transaction.transactionId()),
+                "diagnostics", diag
+            ));
+
+            LOG.info("event=switch.http.request payload={}", toJson(Map.of(
+                "event", "switch.http.request",
+                "correlationId", safe(transaction.correlationId()),
+                "transactionId", safe(transaction.transactionId()),
+                "endpoint", endpoint,
+                "method", "POST",
+                "provider", EXPECTED_PROVIDER,
+                "headers", Map.of(API_KEY_HEADER, maskApiKey(apiKey), CORRELATION_HEADER, transaction.correlationId() == null ? "" : transaction.correlationId()),
+                "body", sanitizeRequestPayload(payload),
+                "timestamp", System.currentTimeMillis()
+            )));
+
+            // application insights event (string attributes)
+            applicationInsightsAdapter.event("switch.http.request", Map.of(
+                "correlationId", safe(transaction.correlationId()),
+                "transactionId", safe(transaction.transactionId()),
+                "endpoint", endpoint,
+                "method", "POST",
+                "provider", EXPECTED_PROVIDER
+            ));
 
             SwitchAuthorizationResponse response = requestSpec
                 .body(payload)
@@ -127,21 +150,35 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
             }
 
             long duration = System.currentTimeMillis() - startedAt;
-            // Log HTTP response details for observability
-            Map<String, Object> responseLog = Map.of(
+            // Log and publish response diagnostics
+            Map<String, Object> responseDiag = Map.of(
+                "endpoint", endpoint,
+                "statusCode", "UNKNOWN",
+                "durationMs", duration,
+                "responsePayload", response
+            );
+            // augment stored diagnostics
+            Map<String, Object> stored = SwitchDiagnosticsContext.get();
+            if (stored != null) {
+                stored.put("response", responseDiag);
+            }
+
+            LOG.info("event=switch.http.response payload={}", toJson(Map.of(
                 "event", "switch.http.response",
                 "correlationId", safe(transaction.correlationId()),
                 "transactionId", safe(transaction.transactionId()),
                 "endpoint", endpoint,
                 "statusCode", "UNKNOWN",
                 "durationMs", duration,
-                "response", response,
-                "provider", safe(response.provider()),
-                "providerStatus", safe(response.status()),
-                "providerResponseCode", response.providerResponseCode() == null ? "UNKNOWN" : response.providerResponseCode()
-            );
+                "response", response
+            )));
 
-            LOG.info("event=switch.http.response payload={}", toJson(responseLog));
+            applicationInsightsAdapter.event("switch.http.response", Map.of(
+                "correlationId", safe(transaction.correlationId()),
+                "transactionId", safe(transaction.transactionId()),
+                "endpoint", endpoint,
+                "provider", safe(response.provider())
+            ));
             applicationInsightsAdapter.increment("switch.authorization.total",
                 Map.of("status", response.providerResponseCode() == null ? "UNKNOWN" : response.providerResponseCode()));
             applicationInsightsAdapter.timing("switch.authorization.latency", duration,
@@ -175,6 +212,31 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
                 "SWITCH_AUTHORIZATION_FAILED",
                 ex.getMessage(),
                 ex);
+            // publish http error diagnostics
+            Map<String, Object> stored = SwitchDiagnosticsContext.get();
+            Map<String, Object> headersSent = Map.of(
+                "Content-Type", "application/json",
+                API_KEY_HEADER, maskApiKey(apiKey),
+                CORRELATION_HEADER, transaction.correlationId() == null ? "" : transaction.correlationId()
+            );
+            Map<String, String> aiAttrs = Map.of(
+                "correlationId", safe(transaction.correlationId()),
+                "transactionId", safe(transaction.transactionId()),
+                "endpoint", endpoint,
+                "error", ex.getClass().getSimpleName()
+            );
+            applicationInsightsAdapter.event("switch.http.error", aiAttrs);
+            LOG.info("event=switch.http.error payload={}", toJson(Map.of(
+                "event", "switch.http.error",
+                "correlationId", safe(transaction.correlationId()),
+                "transactionId", safe(transaction.transactionId()),
+                "endpoint", endpoint,
+                "headersSent", headersSent,
+                "statusCode", "UNKNOWN",
+                "exceptionType", ex.getClass().getSimpleName(),
+                "exceptionMessage", ex.getMessage(),
+                "responseBody", stored != null ? stored.get("response") : null
+            )));
             applicationInsightsAdapter.increment("switch.authorization.total", Map.of("status", "ERROR"));
             applicationInsightsAdapter.timing("switch.authorization.latency", duration, Map.of("status", "ERROR"));
             applicationInsightsAdapter.event("switch.authorization.failed", Map.of(

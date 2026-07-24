@@ -49,7 +49,8 @@ public class SaleMapper {
             transaction.totalAmount(),
             toAuthorizationResult(transaction.authorizationResult()),
             transaction.processingDateTime(),
-            transaction.createdAt()
+            transaction.createdAt(),
+            null
         );
     }
 
