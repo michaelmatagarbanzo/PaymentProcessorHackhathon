@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.env.Environment;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
@@ -39,11 +40,14 @@ class SaleControllerDependencyUnavailableTest {
     @Mock
     private SaleMapper saleMapper;
 
+    @Mock
+    private Environment environment;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new SaleController(processSaleUseCase, saleMapper))
+        mockMvc = MockMvcBuilders.standaloneSetup(new SaleController(processSaleUseCase, saleMapper, environment, false))
             .setControllerAdvice(new GlobalExceptionHandler())
             .build();
 

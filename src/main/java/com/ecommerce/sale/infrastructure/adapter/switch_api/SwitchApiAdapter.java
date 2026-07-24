@@ -21,6 +21,7 @@ import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import java.net.ConnectException;
 import java.net.SocketTimeoutException;
 import java.util.concurrent.TimeoutException;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -113,11 +114,11 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
             );
 
             // store diagnostics for controller to include in API response if needed
-            SwitchDiagnosticsContext.set(Map.of(
-                "correlationId", safe(transaction.correlationId()),
-                "transactionId", safe(transaction.transactionId()),
-                "diagnostics", diag
-            ));
+            Map<String, Object> context = new LinkedHashMap<>();
+            context.put("correlationId", safe(transaction.correlationId()));
+            context.put("transactionId", safe(transaction.transactionId()));
+            context.put("diagnostics", new LinkedHashMap<>(diag));
+            SwitchDiagnosticsContext.set(context);
 
             LOG.info("event=switch.http.request payload={}", toJson(Map.of(
                 "event", "switch.http.request",
@@ -159,8 +160,10 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
             );
             // augment stored diagnostics
             Map<String, Object> stored = SwitchDiagnosticsContext.get();
-            if (stored != null) {
-                stored.put("response", responseDiag);
+            if (stored != null && stored.get("diagnostics") instanceof Map<?, ?> diagnosticsMap) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> mutableDiagnostics = (Map<String, Object>) diagnosticsMap;
+                mutableDiagnostics.put("response", responseDiag);
             }
 
             LOG.info("event=switch.http.response payload={}", toJson(Map.of(
@@ -226,17 +229,17 @@ public class SwitchApiAdapter implements AuthorizationSwitchPort {
                 "error", ex.getClass().getSimpleName()
             );
             applicationInsightsAdapter.event("switch.http.error", aiAttrs);
-            LOG.info("event=switch.http.error payload={}", toJson(Map.of(
-                "event", "switch.http.error",
-                "correlationId", safe(transaction.correlationId()),
-                "transactionId", safe(transaction.transactionId()),
-                "endpoint", endpoint,
-                "headersSent", headersSent,
-                "statusCode", "UNKNOWN",
-                "exceptionType", ex.getClass().getSimpleName(),
-                "exceptionMessage", ex.getMessage(),
-                "responseBody", stored != null ? stored.get("response") : null
-            )));
+            Map<String, Object> httpErrorLog = new LinkedHashMap<>();
+            httpErrorLog.put("event", "switch.http.error");
+            httpErrorLog.put("correlationId", safe(transaction.correlationId()));
+            httpErrorLog.put("transactionId", safe(transaction.transactionId()));
+            httpErrorLog.put("endpoint", endpoint);
+            httpErrorLog.put("headersSent", headersSent);
+            httpErrorLog.put("statusCode", "UNKNOWN");
+            httpErrorLog.put("exceptionType", ex.getClass().getSimpleName());
+            httpErrorLog.put("exceptionMessage", ex.getMessage());
+            httpErrorLog.put("responseBody", stored != null ? stored.get("response") : null);
+            LOG.info("event=switch.http.error payload={}", toJson(httpErrorLog));
             applicationInsightsAdapter.increment("switch.authorization.total", Map.of("status", "ERROR"));
             applicationInsightsAdapter.timing("switch.authorization.latency", duration, Map.of("status", "ERROR"));
             applicationInsightsAdapter.event("switch.authorization.failed", Map.of(
