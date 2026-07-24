@@ -9,6 +9,7 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -29,7 +30,27 @@ import org.springframework.security.web.SecurityFilterChain;
 public class SecurityConfig {
 
     @Bean
+    @Order(0)
+    SecurityFilterChain appConnectorHealthSecurityFilterChain(HttpSecurity http) throws Exception {
+        http
+            .securityMatcher(
+                "/api/v1/appconnector/health",
+                "/api/v1/appconnector/health/",
+                "/api/v1/appconnector/health/**",
+                "/api/v1/public/time",
+                "/api/v1/public/time/",
+                "/api/v1/public/time/**"
+            )
+            .csrf(AbstractHttpConfigurer::disable)
+            .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .authorizeHttpRequests(auth -> auth.anyRequest().permitAll());
+
+        return http.build();
+    }
+
+    @Bean
     @Profile("local")
+    @Order(1)
     SecurityFilterChain localSecurityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(AbstractHttpConfigurer::disable)
@@ -45,6 +66,7 @@ public class SecurityConfig {
 
     @Bean
     @Profile("!local")
+    @Order(1)
     SecurityFilterChain securityFilterChain(HttpSecurity http,
                                             JwtAuthenticationConverter entraJwtAuthenticationConverter) throws Exception {
         http
