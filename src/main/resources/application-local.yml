@@ -10,6 +10,7 @@ switch:
   appconnector:
     base-url: ${SWITCH_BASE_URL:http://localhost:7071}
     api-key: ${SWITCH_API_KEY:}
+    health-url: ${SWITCH_HEALTH_URL:https://appconnector-demo-func-fnbpapgcf3h2eza9.eastus-01.azurewebsites.net/api/health}
   # OAuth removed for AppConnector usage; AppConnector uses X-API-Key only
 
 logging:

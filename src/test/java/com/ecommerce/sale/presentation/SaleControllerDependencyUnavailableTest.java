@@ -96,7 +96,7 @@ class SaleControllerDependencyUnavailableTest {
     void shouldReturn503WhenSwitchTimesOut() throws Exception {
         SwitchDiagnosticsContext.set(Map.of(
             "diagnostics", Map.of(
-                "switchEndpoint", "https://appconnector.azurewebsites.net/api/v1/payments",
+                "endpoint", "https://appconnector.azurewebsites.net/api/v1/payments",
                 "headersSent", Map.of(
                     "Content-Type", "application/json",
                     "X-API-Key", "dev-func********",

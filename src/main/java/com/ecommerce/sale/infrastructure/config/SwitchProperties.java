@@ -57,10 +57,22 @@ public class SwitchProperties {
         return apiKey;
     }
 
+    public String resolveAppconnectorHealthUrl() {
+        if (appconnector.healthUrl != null && !appconnector.healthUrl.isBlank()) {
+            return appconnector.healthUrl;
+        }
+        String resolvedBaseUrl = resolveAppconnectorBaseUrl();
+        if (resolvedBaseUrl == null || resolvedBaseUrl.isBlank()) {
+            return null;
+        }
+        return resolvedBaseUrl + "/api/health";
+    }
+
     public static class Appconnector {
 
         private String baseUrl;
         private String apiKey;
+        private String healthUrl;
 
         public String getBaseUrl() {
             return baseUrl;
@@ -76,6 +88,14 @@ public class SwitchProperties {
 
         public void setApiKey(String apiKey) {
             this.apiKey = apiKey;
+        }
+
+        public String getHealthUrl() {
+            return healthUrl;
+        }
+
+        public void setHealthUrl(String healthUrl) {
+            this.healthUrl = healthUrl;
         }
     }
 

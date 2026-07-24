@@ -12,6 +12,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.util.concurrent.TimeoutException;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -109,7 +110,7 @@ public class GlobalExceptionHandler {
             ex.getMessage(),
             request
         );
-        enrichWithSwitchDiagnostics(detail);
+        enrichWithSwitchDiagnostics(detail, request);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
             .header(HttpHeaders.RETRY_AFTER, "2")
             .body(detail);
@@ -185,22 +186,70 @@ public class GlobalExceptionHandler {
             request
         );
         if (SWITCH_UNAVAILABLE_TYPE.equals(type)) {
-            enrichWithSwitchDiagnostics(detail);
+            enrichWithSwitchDiagnostics(detail, request);
         }
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
             .header(HttpHeaders.RETRY_AFTER, "30")
             .body(detail);
     }
 
-    private void enrichWithSwitchDiagnostics(ProblemDetail detail) {
+    private void enrichWithSwitchDiagnostics(ProblemDetail detail, HttpServletRequest request) {
         Map<String, Object> ctx = SwitchDiagnosticsContext.pop();
+        if (ctx == null) {
+            String correlationId = request.getHeader("X-Correlation-Id");
+            ctx = SwitchDiagnosticsContext.popByCorrelationId(correlationId);
+        }
         if (ctx == null) {
             return;
         }
         Object diagnostics = ctx.get("diagnostics");
-        if (diagnostics instanceof Map<?, ?>) {
-            detail.setProperty("diagnostics", diagnostics);
+        if (diagnostics instanceof Map<?, ?> rawDiagnostics) {
+            detail.setProperty("diagnostics", normalizeSwitchDiagnostics(rawDiagnostics));
         }
+    }
+
+    private Map<String, Object> normalizeSwitchDiagnostics(Map<?, ?> rawDiagnostics) {
+        Map<String, Object> normalized = new LinkedHashMap<>();
+
+        Object switchEndpoint = rawDiagnostics.get("switchEndpoint");
+        if (switchEndpoint == null) {
+            switchEndpoint = rawDiagnostics.get("endpoint");
+        }
+        if (switchEndpoint != null) {
+            normalized.put("switchEndpoint", switchEndpoint);
+        }
+
+        Object method = rawDiagnostics.get("method");
+        if (method != null) {
+            normalized.put("method", method);
+        }
+
+        Object provider = rawDiagnostics.get("provider");
+        if (provider != null) {
+            normalized.put("provider", provider);
+        }
+
+        Object headersSent = rawDiagnostics.get("headersSent");
+        if (headersSent != null) {
+            normalized.put("headersSent", headersSent);
+        }
+
+        Object requestPayload = rawDiagnostics.get("requestPayload");
+        if (requestPayload != null) {
+            normalized.put("requestPayload", requestPayload);
+        }
+
+        Object response = rawDiagnostics.get("response");
+        if (response != null) {
+            normalized.put("response", response);
+        }
+
+        Object timestamp = rawDiagnostics.get("timestamp");
+        if (timestamp != null) {
+            normalized.put("timestamp", timestamp);
+        }
+
+        return normalized;
     }
 
     private URI resolveExternalDependencyType(String dependency) {

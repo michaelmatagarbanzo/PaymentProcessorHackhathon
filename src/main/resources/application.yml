@@ -48,6 +48,7 @@ switch:
   appconnector:
     base-url: ${SWITCH_BASE_URL:${SWITCH_API_BASE_URL:}}
     api-key: ${SWITCH_API_KEY:}
+    health-url: ${SWITCH_HEALTH_URL:}
   timeout-ms: ${SWITCH_TIMEOUT_MS:5000}
   # OAuth removed for AppConnector usage; AppConnector uses X-API-Key only
 
